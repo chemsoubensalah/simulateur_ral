@@ -1,41 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
+import { collectErrors, dist, pixel, toScreen } from "./helpers";
 
 const SAMPLE = path.join(process.cwd(), "public", "samples", "room.jpg");
-const IMG_W = 1600;
-const IMG_H = 1200;
-
-function collectErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("console", (m) => {
-    if (m.type() === "error") errors.push(m.text());
-  });
-  page.on("pageerror", (e) => errors.push(e.message));
-  return errors;
-}
-
-/** Map image pixel coordinates to page coordinates of the render canvas. */
-async function toScreen(page: Page, x: number, y: number) {
-  const box = await page.getByTestId("render-canvas").boundingBox();
-  if (!box) throw new Error("canvas not visible");
-  return { x: box.x + (x / IMG_W) * box.width, y: box.y + (y / IMG_H) * box.height };
-}
-
-/** Read a pixel of the rendered (recolored) image, in image coordinates. */
-async function pixel(page: Page, x: number, y: number): Promise<[number, number, number]> {
-  return page.getByTestId("render-canvas").evaluate(
-    (c: HTMLCanvasElement, [px, py]) => {
-      const tmp = document.createElement("canvas");
-      tmp.width = c.width;
-      tmp.height = c.height;
-      const ctx = tmp.getContext("2d")!;
-      ctx.drawImage(c, 0, 0);
-      const d = ctx.getImageData(px, py, 1, 1).data;
-      return [d[0], d[1], d[2]] as [number, number, number];
-    },
-    [x, y] as const,
-  );
-}
 
 /** Paint the back wall (image region x 480–1020, y 280–600) with horizontal strokes. */
 async function paintBackWall(page: Page, touch: boolean) {
@@ -64,7 +31,6 @@ async function paintBackWall(page: Page, touch: boolean) {
   }
 }
 
-const dist = (a: number[], b: number[]) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
 
 test("root redirects to Arabic with RTL layout", async ({ page }) => {
   await page.goto("/");
@@ -87,6 +53,9 @@ test("upload → paint wall → change color → compare → undo → download",
   await page.goto("/en/editor");
   await page.getByTestId("file-input").setInputFiles(SAMPLE);
   await expect(page.getByTestId("render-canvas")).toBeVisible();
+  // Smart select (AI) is the default tool; this test covers the manual brush.
+  await expect(page.getByTestId("tool-smart")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("tool-brush").click();
   await expect(page.getByTestId("tool-brush")).toHaveAttribute("aria-checked", "true");
   // Wait until the first frame is rendered.
   await expect.poll(async () => dist(await pixel(page, 700, 450), [0, 0, 0])).toBeGreaterThan(100);

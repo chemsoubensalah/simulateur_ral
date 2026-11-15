@@ -21,9 +21,12 @@ type Props = {
   onBrightness: (v: number) => void;
   onFeather: (v: number) => void;
   onClearMask: () => void;
+  /** Edge-aware refinement (needs the AI worker); undefined hides the button. */
+  onRefine?: () => void;
+  refining?: boolean;
 };
 
-export function ColorPanel({ surface, onColor, onFinish, onBrightness, onFeather, onClearMask }: Props) {
+export function ColorPanel({ surface, onColor, onFinish, onBrightness, onFeather, onClearMask, onRefine, refining }: Props) {
   const { t, formatNumber } = useI18n();
   const [hexText, setHexText] = useState(surface.hex ?? "");
   useEffect(() => setHexText(surface.hex ?? ""), [surface.hex]);
@@ -134,9 +137,22 @@ export function ColorPanel({ surface, onColor, onFinish, onBrightness, onFeather
         <input type="range" min={0} max={3} step={1} value={surface.feather} onChange={(e) => onFeather(Number(e.target.value))} />
       </label>
 
-      <button type="button" onClick={onClearMask} className="min-h-11 w-fit rounded-lg border border-line bg-white px-4 text-sm hover:bg-red-50 hover:text-red-700">
-        {t("editor.clearMask")}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {onRefine && (
+          <button
+            type="button"
+            onClick={onRefine}
+            disabled={refining || surface.coverage === 0}
+            data-testid="refine"
+            className="min-h-11 rounded-lg border border-brand-600 bg-white px-4 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+          >
+            {refining ? t("editor.refining") : t("editor.refine")}
+          </button>
+        )}
+        <button type="button" onClick={onClearMask} className="min-h-11 rounded-lg border border-line bg-white px-4 text-sm hover:bg-red-50 hover:text-red-700">
+          {t("editor.clearMask")}
+        </button>
+      </div>
     </section>
   );
 }

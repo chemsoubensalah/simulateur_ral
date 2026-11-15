@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n/client";
 import type { BrushMode } from "@/lib/mask/ops";
 import type { Tool } from "./types";
-import { BrushIcon, CompareIcon, EraserIcon, LassoIcon, MaskIcon, MinusIcon, PanIcon, PlusIcon, RedoIcon, UndoIcon } from "./icons";
+import { BrushIcon, CompareIcon, EraserIcon, LassoIcon, MaskIcon, MinusIcon, PanIcon, PlusIcon, RedoIcon, SparkleIcon, UndoIcon } from "./icons";
 
 type Props = {
   tool: Tool;
@@ -23,11 +23,16 @@ type Props = {
   onShowMask: (v: boolean) => void;
   compare: boolean;
   onCompare: (v: boolean) => void;
+  smartMode: BrushMode;
+  onSmartMode: (m: BrushMode) => void;
+  /** Smart select is unavailable (AI failed): the tool is hidden. */
+  smartAvailable: boolean;
 };
 
 export function Toolbar(p: Props) {
   const { t } = useI18n();
   const tools: { id: Tool; label: string; icon: ReactNode; key: string }[] = [
+    ...(p.smartAvailable ? [{ id: "smart" as const, label: t("editor.smart"), icon: <SparkleIcon />, key: "S" }] : []),
     { id: "brush", label: t("editor.brush"), icon: <BrushIcon />, key: "B" },
     { id: "eraser", label: t("editor.eraser"), icon: <EraserIcon />, key: "E" },
     { id: "lasso", label: t("editor.lasso"), icon: <LassoIcon />, key: "L" },
@@ -88,6 +93,30 @@ export function Toolbar(p: Props) {
             <input type="range" min={0} max={100} value={Math.round(p.hardness * 100)} onChange={(e) => p.onHardness(Number(e.target.value) / 100)} className="w-full" />
             <span className="w-10 shrink-0 text-end tabular-nums text-muted" aria-hidden>{Math.round(p.hardness * 100)}</span>
           </label>
+        </div>
+      )}
+
+      {p.tool === "smart" && !p.compare && (
+        <div className="flex flex-col gap-2">
+          <div role="radiogroup" aria-label={t("editor.smartMode")} className="flex w-fit rounded-xl border border-line bg-white p-1">
+            {(["add", "erase"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={p.smartMode === m}
+                data-testid={`smart-${m}`}
+                onClick={() => p.onSmartMode(m)}
+                className={`flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium ${
+                  p.smartMode === m ? (m === "add" ? "bg-brand-600 text-white" : "bg-red-600 text-white") : "hover:bg-brand-50"
+                }`}
+              >
+                {m === "add" ? <PlusIcon width={18} height={18} /> : <MinusIcon width={18} height={18} />}
+                {m === "add" ? t("editor.smartAdd") : t("editor.smartRemove")}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted">{t("editor.smartHint")}</p>
         </div>
       )}
 

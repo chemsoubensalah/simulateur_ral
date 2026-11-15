@@ -11,7 +11,8 @@ export type SurfaceRenderInput = {
   visible: boolean;
 };
 
-export type OverlayInput = { surfaceId: string; color: [number, number, number]; opacity: number } | null;
+/** A tinted, outlined mask drawn on top (selection highlight, detected surfaces). */
+export type OverlayInput = { maskId: string; color: [number, number, number]; opacity: number };
 
 type Program = { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null>; aPos: number };
 
@@ -124,8 +125,8 @@ export class RecolorRenderer {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, source);
   }
 
-  /** Upload (or replace) the 8-bit mask for a surface. */
-  setMask(id: string, mask: Uint8Array): void {
+  /** Upload (or replace) an 8-bit mask. Defaults to image size; overlays may use a lower resolution. */
+  setMask(id: string, mask: Uint8Array, width = this.width, height = this.height): void {
     const gl = this.gl;
     let tex = this.maskTex.get(id);
     if (!tex) {
@@ -133,7 +134,7 @@ export class RecolorRenderer {
       this.maskTex.set(id, tex);
     } else gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.width, this.height, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, mask);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, width, height, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, mask);
   }
 
   /** Update only a rectangular region of a mask (cheap during brush strokes). */
@@ -164,7 +165,7 @@ export class RecolorRenderer {
     gl.vertexAttribPointer(p.aPos, 2, gl.FLOAT, false, 0, 0);
   }
 
-  render(surfaces: SurfaceRenderInput[], overlay: OverlayInput): void {
+  render(surfaces: SurfaceRenderInput[], overlays: OverlayInput[] = []): void {
     if (!this.imageTex || this.isContextLost) return;
     const gl = this.gl;
     gl.viewport(0, 0, this.width, this.height);
@@ -200,16 +201,17 @@ export class RecolorRenderer {
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
-    if (overlay) {
-      const tex = this.maskTex.get(overlay.surfaceId);
-      if (tex) {
-        const o = this.overlay;
-        gl.useProgram(o.program);
-        this.bindQuad(o);
+    if (overlays.length) {
+      const o = this.overlay;
+      gl.useProgram(o.program);
+      this.bindQuad(o);
+      gl.uniform1i(o.uniforms.uMask ?? null, 1);
+      gl.uniform2f(o.uniforms.uSize ?? null, this.width, this.height);
+      for (const overlay of overlays) {
+        const tex = this.maskTex.get(overlay.maskId);
+        if (!tex) continue;
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.uniform1i(o.uniforms.uMask ?? null, 1);
-        gl.uniform2f(o.uniforms.uSize ?? null, this.width, this.height);
         gl.uniform3f(o.uniforms.uColor ?? null, ...overlay.color);
         gl.uniform1f(o.uniforms.uOpacity ?? null, overlay.opacity);
         gl.drawArrays(gl.TRIANGLES, 0, 6);

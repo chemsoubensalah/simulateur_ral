@@ -1,7 +1,7 @@
 import type { Lab } from "@/lib/color/lab";
 import type { Finish, SurfaceStats } from "@/lib/recolor/model";
 
-export type Tool = "brush" | "eraser" | "lasso" | "pan";
+export type Tool = "smart" | "brush" | "eraser" | "lasso" | "pan";
 
 export type Surface = {
   id: string;

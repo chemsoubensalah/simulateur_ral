@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
-import { RecolorRenderer, type SurfaceRenderInput } from "@/lib/recolor/renderer";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { RecolorRenderer, type OverlayInput, type SurfaceRenderInput } from "@/lib/recolor/renderer";
 import type { EditorDocument } from "@/lib/editor/document";
 import type { LoadedImage } from "@/lib/image/load";
 import { emptyRect, mergeCoverage, strokeSegment, unionRect, type BrushMode, type Rect } from "@/lib/mask/ops";
@@ -12,7 +12,7 @@ import type { Surface, Tool, ViewTransform } from "./types";
 import { FitIcon, MinusIcon, PlusIcon } from "./icons";
 
 export type StageHandle = {
-  uploadMask: (id: string, mask: Uint8Array) => void;
+  uploadMask: (id: string, mask: Uint8Array, width?: number, height?: number) => void;
   removeMask: (id: string) => void;
   requestRender: () => void;
   exportBlob: (type?: string, quality?: number) => Promise<Blob | null>;
@@ -37,6 +37,17 @@ type Props = {
   onEditEnd: (surfaceId: string, before: Uint8Array, rect: Rect) => void;
   onRenderTime?: (ms: number) => void;
   onWebglError: () => void;
+  /** Additional tinted masks (e.g. detected surfaces), drawn above the selection highlight. */
+  overlays?: OverlayInput[];
+  /** When true, taps go to onTap whatever the tool (used to pick detected surfaces). */
+  tapMode?: boolean;
+  onTap?: (p: Point) => void;
+  /** Prompt points of the current smart selection. */
+  markers?: { x: number; y: number; label: 0 | 1 }[];
+  busy?: boolean;
+  /** Controls shown at the bottom / top of the photo. */
+  bottomBar?: ReactNode;
+  topChip?: ReactNode;
 };
 
 const MIN_SCALE = 1;
@@ -94,10 +105,10 @@ export function Stage(props: Props) {
       visible: s.visible,
     }));
     const t0 = performance.now();
-    r.render(
-      inputs,
-      p.showMask && !p.compare && p.selectedId ? { surfaceId: p.selectedId, color: OVERLAY_COLOR, opacity: 0.35 } : null,
-    );
+    const overlays: OverlayInput[] = [];
+    if (p.showMask && !p.compare && p.selectedId && !p.tapMode) overlays.push({ maskId: p.selectedId, color: OVERLAY_COLOR, opacity: 0.35 });
+    if (!p.compare && p.overlays) overlays.push(...p.overlays);
+    r.render(inputs, overlays);
     // Skip the first frames: they include shader compilation and texture upload.
     if (p.onRenderTime && ++renderCount.current > 2 && t0 - lastRenderReport.current > 300) {
       r.readPixel(0, 0); // forces the GPU to finish so the timing is real
@@ -145,13 +156,13 @@ export function Stage(props: Props) {
 
   useEffect(() => {
     requestRender();
-  }, [surfaces, selectedId, showMask, compare, requestRender]);
+  }, [surfaces, selectedId, showMask, compare, props.overlays, props.tapMode, requestRender]);
 
   useImperativeHandle(
     props.ref,
     () => ({
-      uploadMask: (id, mask) => {
-        rendererRef.current?.setMask(id, mask);
+      uploadMask: (id, mask, width, height) => {
+        rendererRef.current?.setMask(id, mask, width, height);
         requestRender();
       },
       removeMask: (id) => {
@@ -168,7 +179,7 @@ export function Stage(props: Props) {
           const p = latest.current;
           r.render(
             p.surfaces.map((s) => ({ id: s.id, target: s.lab, stats: s.stats, finish: s.finish, brightness: s.brightness, visible: s.visible })),
-            null,
+            [],
           );
           canvas.toBlob((b) => {
             resolve(b);
@@ -354,7 +365,7 @@ export function Stage(props: Props) {
     }
     if (e.button !== 0) return;
 
-    if (tool === "lasso") {
+    if (tool === "lasso" || tool === "smart" || props.tapMode) {
       gesture.current = { kind: "tap", startX: e.clientX, startY: e.clientY };
       return;
     }
@@ -418,6 +429,10 @@ export function Stage(props: Props) {
       if (Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < 8) {
         const p = toImage(e.clientX, e.clientY);
         if (!p) return;
+        if (latest.current.tapMode || latest.current.tool === "smart") {
+          if (p.x >= 0 && p.y >= 0 && p.x < image.width && p.y < image.height) latest.current.onTap?.(p);
+          return;
+        }
         const pts = lassoRef.current;
         const first = pts[0];
         const closeDist = 14 * imagePerScreen();
@@ -446,7 +461,7 @@ export function Stage(props: Props) {
 
   const ips = box.dw > 0 ? image.width / (box.dw * view.scale) : 1;
   const brushR = (brushSize / 2) * ips;
-  const showBrushCursor = cursor && !compare && (tool === "brush" || tool === "eraser");
+  const showBrushCursor = cursor && !compare && !props.tapMode && (tool === "brush" || tool === "eraser");
   const zoomCenter = (f: number) => zoomAt(f, box.cw / 2, box.ch / 2);
 
   return (
@@ -458,7 +473,7 @@ export function Stage(props: Props) {
         className="absolute inset-0"
         style={{
           touchAction: "none",
-          cursor: compare ? "default" : tool === "pan" ? "grab" : tool === "lasso" ? "crosshair" : "none",
+          cursor: compare ? "default" : props.tapMode ? "pointer" : tool === "pan" ? "grab" : tool === "lasso" || tool === "smart" ? "crosshair" : "none",
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -498,6 +513,16 @@ export function Stage(props: Props) {
                 <circle cx={cursor.x} cy={cursor.y} r={brushR} fill="none" stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
               </>
             )}
+            {!compare &&
+              props.markers?.map((m, i) => (
+                <g key={i} transform={`translate(${m.x} ${m.y}) scale(${ips})`}>
+                  <circle r={11} fill={m.label === 1 ? "#1f8a70" : "#dc2626"} stroke="#fff" strokeWidth={2.5} />
+                  <path d={m.label === 1 ? "M-5 0h10M0 -5v10" : "M-5 0h10"} stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+                  {props.busy && i === props.markers!.length - 1 && (
+                    <circle r={17} fill="none" stroke="#fff" strokeWidth={2.5} strokeDasharray="20 60" className="origin-center animate-spin" />
+                  )}
+                </g>
+              ))}
             {lasso.length > 0 && (
               <>
                 <polyline
@@ -556,6 +581,12 @@ export function Stage(props: Props) {
             {t("common.done")}
           </button>
         </div>
+      )}
+
+      {props.topChip && !compare && <div className="pointer-events-none absolute start-3 top-3 max-w-[75%]">{props.topChip}</div>}
+
+      {props.bottomBar && lasso.length === 0 && !compare && (
+        <div className="absolute inset-x-0 bottom-3 flex justify-center pe-16 ps-3">{props.bottomBar}</div>
       )}
 
       <div className="absolute bottom-3 end-3 flex flex-col gap-1.5" style={{ display: lasso.length > 0 ? "none" : undefined }}>
