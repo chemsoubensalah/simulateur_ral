@@ -1,0 +1,1982 @@
+{
+ "id": "ral-classic",
+ "source": "Hex: Wikipedia 'List of RAL colours' (CC BY-SA 4.0); names: RAL. Screen approximations, not binding RAL values.",
+ "colors": [
+  {
+   "code": "RAL 1000",
+   "hex": "#CDBA88",
+   "names": {
+    "en": "Green beige",
+    "de": "Grünbeige",
+    "ar": "بيج مخضرّ"
+   }
+  },
+  {
+   "code": "RAL 1001",
+   "hex": "#D0B084",
+   "names": {
+    "en": "Beige",
+    "de": "Beige",
+    "ar": "بيج"
+   }
+  },
+  {
+   "code": "RAL 1002",
+   "hex": "#D2AA6D",
+   "names": {
+    "en": "Sand yellow",
+    "de": "Sandgelb",
+    "ar": "أصفر رملي"
+   }
+  },
+  {
+   "code": "RAL 1003",
+   "hex": "#F9A800",
+   "names": {
+    "en": "Signal yellow",
+    "de": "Signalgelb",
+    "ar": "أصفر الإشارات"
+   }
+  },
+  {
+   "code": "RAL 1004",
+   "hex": "#E49E00",
+   "names": {
+    "en": "Golden yellow",
+    "de": "Goldgelb",
+    "ar": "أصفر ذهبي"
+   }
+  },
+  {
+   "code": "RAL 1005",
+   "hex": "#CB8E00",
+   "names": {
+    "en": "Honey yellow",
+    "de": "Honiggelb",
+    "ar": "أصفر عسلي"
+   }
+  },
+  {
+   "code": "RAL 1006",
+   "hex": "#E29000",
+   "names": {
+    "en": "Maize yellow",
+    "de": "Maisgelb",
+    "ar": "أصفر الذرة"
+   }
+  },
+  {
+   "code": "RAL 1007",
+   "hex": "#E88C00",
+   "names": {
+    "en": "Daffodil yellow",
+    "de": "Narzissengelb",
+    "ar": "أصفر نرجسي"
+   }
+  },
+  {
+   "code": "RAL 1011",
+   "hex": "#AF804F",
+   "names": {
+    "en": "Brown beige",
+    "de": "Braunbeige",
+    "ar": "بيج بني"
+   }
+  },
+  {
+   "code": "RAL 1012",
+   "hex": "#DDAF27",
+   "names": {
+    "en": "Lemon yellow",
+    "de": "Zitronengelb",
+    "ar": "أصفر ليموني"
+   }
+  },
+  {
+   "code": "RAL 1013",
+   "hex": "#E3D9C6",
+   "names": {
+    "en": "Oyster white",
+    "de": "Perlweiß",
+    "ar": "أبيض محاري"
+   }
+  },
+  {
+   "code": "RAL 1014",
+   "hex": "#DDC49A",
+   "names": {
+    "en": "Ivory",
+    "de": "Elfenbein",
+    "ar": "عاجي"
+   }
+  },
+  {
+   "code": "RAL 1015",
+   "hex": "#E6D2B5",
+   "names": {
+    "en": "Light ivory",
+    "de": "Hellelfenbein",
+    "ar": "عاجي فاتح"
+   }
+  },
+  {
+   "code": "RAL 1016",
+   "hex": "#F1DD38",
+   "names": {
+    "en": "Sulfur yellow",
+    "de": "Schwefelgelb",
+    "ar": "أصفر كبريتي"
+   }
+  },
+  {
+   "code": "RAL 1017",
+   "hex": "#F6A950",
+   "names": {
+    "en": "Saffron yellow",
+    "de": "Safrangelb",
+    "ar": "أصفر زعفراني"
+   }
+  },
+  {
+   "code": "RAL 1018",
+   "hex": "#FACA30",
+   "names": {
+    "en": "Zinc yellow",
+    "de": "Zinkgelb",
+    "ar": "أصفر زنكي"
+   }
+  },
+  {
+   "code": "RAL 1019",
+   "hex": "#A48F7A",
+   "names": {
+    "en": "Grey beige",
+    "de": "Graubeige",
+    "ar": "بيج رمادي"
+   }
+  },
+  {
+   "code": "RAL 1020",
+   "hex": "#A08F65",
+   "names": {
+    "en": "Olive yellow",
+    "de": "Olivgelb",
+    "ar": "أصفر زيتوني"
+   }
+  },
+  {
+   "code": "RAL 1021",
+   "hex": "#F6B600",
+   "names": {
+    "en": "Colza yellow",
+    "de": "Rapsgelb",
+    "ar": "أصفر السلجم"
+   }
+  },
+  {
+   "code": "RAL 1023",
+   "hex": "#F7B500",
+   "names": {
+    "en": "Traffic yellow",
+    "de": "Verkehrsgelb",
+    "ar": "أصفر المرور"
+   }
+  },
+  {
+   "code": "RAL 1024",
+   "hex": "#BA8F4C",
+   "names": {
+    "en": "Ochre yellow",
+    "de": "Ockergelb",
+    "ar": "أصفر مغري"
+   }
+  },
+  {
+   "code": "RAL 1026",
+   "hex": "#FFFF00",
+   "names": {
+    "en": "Luminous yellow",
+    "de": "Leuchtgelb",
+    "ar": "أصفر فسفوري"
+   },
+   "special": "luminous"
+  },
+  {
+   "code": "RAL 1027",
+   "hex": "#A77F0E",
+   "names": {
+    "en": "Curry",
+    "de": "Currygelb",
+    "ar": "أصفر الكاري"
+   }
+  },
+  {
+   "code": "RAL 1028",
+   "hex": "#FF9B00",
+   "names": {
+    "en": "Melon yellow",
+    "de": "Melonengelb",
+    "ar": "أصفر شمامي"
+   }
+  },
+  {
+   "code": "RAL 1032",
+   "hex": "#E2A300",
+   "names": {
+    "en": "Broom yellow",
+    "de": "Ginstergelb",
+    "ar": "أصفر الرتم"
+   }
+  },
+  {
+   "code": "RAL 1033",
+   "hex": "#F99A1C",
+   "names": {
+    "en": "Dahlia yellow",
+    "de": "Dahliengelb",
+    "ar": "أصفر الداليا"
+   }
+  },
+  {
+   "code": "RAL 1034",
+   "hex": "#EB9C52",
+   "names": {
+    "en": "Pastel yellow",
+    "de": "Pastellgelb",
+    "ar": "أصفر باستيل"
+   }
+  },
+  {
+   "code": "RAL 1035",
+   "hex": "#908370",
+   "names": {
+    "en": "Pearl beige",
+    "de": "Perlbeige",
+    "ar": "بيج لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 1036",
+   "hex": "#80643F",
+   "names": {
+    "en": "Pearl gold",
+    "de": "Perlgold",
+    "ar": "ذهبي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 1037",
+   "hex": "#F09200",
+   "names": {
+    "en": "Sun yellow",
+    "de": "Sonnengelb",
+    "ar": "أصفر شمسي"
+   }
+  },
+  {
+   "code": "RAL 2000",
+   "hex": "#DD7907",
+   "names": {
+    "en": "Yellow orange",
+    "de": "Gelborange",
+    "ar": "برتقالي مصفرّ"
+   }
+  },
+  {
+   "code": "RAL 2001",
+   "hex": "#BE4E20",
+   "names": {
+    "en": "Red orange",
+    "de": "Rotorange",
+    "ar": "برتقالي محمرّ"
+   }
+  },
+  {
+   "code": "RAL 2002",
+   "hex": "#C63927",
+   "names": {
+    "en": "Vermilion",
+    "de": "Blutorange",
+    "ar": "زنجفري"
+   }
+  },
+  {
+   "code": "RAL 2003",
+   "hex": "#FA842B",
+   "names": {
+    "en": "Pastel orange",
+    "de": "Pastellorange",
+    "ar": "برتقالي باستيل"
+   }
+  },
+  {
+   "code": "RAL 2004",
+   "hex": "#E75B12",
+   "names": {
+    "en": "Pure orange",
+    "de": "Reinorange",
+    "ar": "برتقالي نقي"
+   }
+  },
+  {
+   "code": "RAL 2005",
+   "hex": "#FF2300",
+   "names": {
+    "en": "Luminous orange",
+    "de": "Leuchtorange",
+    "ar": "برتقالي فسفوري"
+   },
+   "special": "luminous"
+  },
+  {
+   "code": "RAL 2007",
+   "hex": "#FFA421",
+   "names": {
+    "en": "Luminous bright orange",
+    "de": "Leuchthellorange",
+    "ar": "برتقالي فسفوري ساطع"
+   },
+   "special": "luminous"
+  },
+  {
+   "code": "RAL 2008",
+   "hex": "#F3752C",
+   "names": {
+    "en": "Bright red orange",
+    "de": "Hellrotorange",
+    "ar": "برتقالي محمرّ ساطع"
+   }
+  },
+  {
+   "code": "RAL 2009",
+   "hex": "#E15501",
+   "names": {
+    "en": "Traffic orange",
+    "de": "Verkehrsorange",
+    "ar": "برتقالي المرور"
+   }
+  },
+  {
+   "code": "RAL 2010",
+   "hex": "#D4652F",
+   "names": {
+    "en": "Signal orange",
+    "de": "Signalorange",
+    "ar": "برتقالي الإشارات"
+   }
+  },
+  {
+   "code": "RAL 2011",
+   "hex": "#EC7C25",
+   "names": {
+    "en": "Deep orange",
+    "de": "Tieforange",
+    "ar": "برتقالي غامق"
+   }
+  },
+  {
+   "code": "RAL 2012",
+   "hex": "#DB6A50",
+   "names": {
+    "en": "Salmon orange",
+    "de": "Lachsorange",
+    "ar": "برتقالي سلموني"
+   }
+  },
+  {
+   "code": "RAL 2013",
+   "hex": "#954527",
+   "names": {
+    "en": "Pearl orange",
+    "de": "Perlorange",
+    "ar": "برتقالي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 2017",
+   "hex": "#FA4402",
+   "names": {
+    "en": "RAL orange",
+    "de": "RAL orange",
+    "ar": "برتقالي RAL"
+   }
+  },
+  {
+   "code": "RAL 3000",
+   "hex": "#AB2524",
+   "names": {
+    "en": "Flame red",
+    "de": "Feuerrot",
+    "ar": "أحمر لهبي"
+   }
+  },
+  {
+   "code": "RAL 3001",
+   "hex": "#A02128",
+   "names": {
+    "en": "Signal red",
+    "de": "Signalrot",
+    "ar": "أحمر الإشارات"
+   }
+  },
+  {
+   "code": "RAL 3002",
+   "hex": "#A1232B",
+   "names": {
+    "en": "Carmine red",
+    "de": "Karminrot",
+    "ar": "أحمر قرمزي"
+   }
+  },
+  {
+   "code": "RAL 3003",
+   "hex": "#8D1D2C",
+   "names": {
+    "en": "Ruby red",
+    "de": "Rubinrot",
+    "ar": "أحمر ياقوتي"
+   }
+  },
+  {
+   "code": "RAL 3004",
+   "hex": "#701F29",
+   "names": {
+    "en": "Purple red",
+    "de": "Purpurrot",
+    "ar": "أحمر أرجواني"
+   }
+  },
+  {
+   "code": "RAL 3005",
+   "hex": "#5E2028",
+   "names": {
+    "en": "Wine red",
+    "de": "Weinrot",
+    "ar": "أحمر نبيذي"
+   }
+  },
+  {
+   "code": "RAL 3007",
+   "hex": "#402225",
+   "names": {
+    "en": "Black red",
+    "de": "Schwarzrot",
+    "ar": "أحمر مسودّ"
+   }
+  },
+  {
+   "code": "RAL 3009",
+   "hex": "#703731",
+   "names": {
+    "en": "Oxide red",
+    "de": "Oxidrot",
+    "ar": "أحمر أكسيدي"
+   }
+  },
+  {
+   "code": "RAL 3011",
+   "hex": "#7E292C",
+   "names": {
+    "en": "Brown red",
+    "de": "Braunrot",
+    "ar": "أحمر بني"
+   }
+  },
+  {
+   "code": "RAL 3012",
+   "hex": "#CB8D73",
+   "names": {
+    "en": "Beige red",
+    "de": "Beigerot",
+    "ar": "أحمر بيج"
+   }
+  },
+  {
+   "code": "RAL 3013",
+   "hex": "#9C322E",
+   "names": {
+    "en": "Tomato red",
+    "de": "Tomatenrot",
+    "ar": "أحمر طماطمي"
+   }
+  },
+  {
+   "code": "RAL 3014",
+   "hex": "#D47479",
+   "names": {
+    "en": "Antique pink",
+    "de": "Altrosa",
+    "ar": "وردي عتيق"
+   }
+  },
+  {
+   "code": "RAL 3015",
+   "hex": "#E1A6AD",
+   "names": {
+    "en": "Light pink",
+    "de": "Hellrosa",
+    "ar": "وردي فاتح"
+   }
+  },
+  {
+   "code": "RAL 3016",
+   "hex": "#AC4034",
+   "names": {
+    "en": "Coral red",
+    "de": "Korallenrot",
+    "ar": "أحمر مرجاني"
+   }
+  },
+  {
+   "code": "RAL 3017",
+   "hex": "#D3545F",
+   "names": {
+    "en": "Rose",
+    "de": "Rosé",
+    "ar": "وردي"
+   }
+  },
+  {
+   "code": "RAL 3018",
+   "hex": "#D14152",
+   "names": {
+    "en": "Strawberry red",
+    "de": "Erdbeerrot",
+    "ar": "أحمر فراولي"
+   }
+  },
+  {
+   "code": "RAL 3020",
+   "hex": "#C1121C",
+   "names": {
+    "en": "Traffic red",
+    "de": "Verkehrsrot",
+    "ar": "أحمر المرور"
+   }
+  },
+  {
+   "code": "RAL 3022",
+   "hex": "#D56D56",
+   "names": {
+    "en": "Salmon pink",
+    "de": "Lachsrot",
+    "ar": "وردي سلموني"
+   }
+  },
+  {
+   "code": "RAL 3024",
+   "hex": "#F70000",
+   "names": {
+    "en": "Luminous red",
+    "de": "Leuchtrot",
+    "ar": "أحمر فسفوري"
+   },
+   "special": "luminous"
+  },
+  {
+   "code": "RAL 3026",
+   "hex": "#FF0000",
+   "names": {
+    "en": "Luminous bright red",
+    "de": "Leuchthellrot",
+    "ar": "أحمر فسفوري ساطع"
+   },
+   "special": "luminous"
+  },
+  {
+   "code": "RAL 3027",
+   "hex": "#B42041",
+   "names": {
+    "en": "Raspberry red",
+    "de": "Himbeerrot",
+    "ar": "أحمر العليق"
+   }
+  },
+  {
+   "code": "RAL 3028",
+   "hex": "#E72512",
+   "names": {
+    "en": "Pure red",
+    "de": "Reinrot",
+    "ar": "أحمر نقي"
+   }
+  },
+  {
+   "code": "RAL 3031",
+   "hex": "#AC323B",
+   "names": {
+    "en": "Orient red",
+    "de": "Orientrot",
+    "ar": "أحمر شرقي"
+   }
+  },
+  {
+   "code": "RAL 3032",
+   "hex": "#711521",
+   "names": {
+    "en": "Pearl ruby red",
+    "de": "Perlrubinrot",
+    "ar": "أحمر ياقوتي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 3033",
+   "hex": "#B24C43",
+   "names": {
+    "en": "Pearl pink",
+    "de": "Perlrosa",
+    "ar": "وردي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 4001",
+   "hex": "#8A5A83",
+   "names": {
+    "en": "Red lilac",
+    "de": "Rotlila",
+    "ar": "ليلكي محمرّ"
+   }
+  },
+  {
+   "code": "RAL 4002",
+   "hex": "#933D50",
+   "names": {
+    "en": "Red violet",
+    "de": "Rotviolett",
+    "ar": "بنفسجي محمرّ"
+   }
+  },
+  {
+   "code": "RAL 4003",
+   "hex": "#D15B8F",
+   "names": {
+    "en": "Heather violet",
+    "de": "Erikaviolett",
+    "ar": "بنفسجي خلنجي"
+   }
+  },
+  {
+   "code": "RAL 4004",
+   "hex": "#691639",
+   "names": {
+    "en": "Claret violet",
+    "de": "Bordeauxviolett",
+    "ar": "بنفسجي نبيذي"
+   }
+  },
+  {
+   "code": "RAL 4005",
+   "hex": "#83639D",
+   "names": {
+    "en": "Blue lilac",
+    "de": "Blaulila",
+    "ar": "ليلكي مزرقّ"
+   }
+  },
+  {
+   "code": "RAL 4006",
+   "hex": "#992572",
+   "names": {
+    "en": "Traffic purple",
+    "de": "Verkehrspurpur",
+    "ar": "أرجواني المرور"
+   }
+  },
+  {
+   "code": "RAL 4007",
+   "hex": "#4A203B",
+   "names": {
+    "en": "Purple violet",
+    "de": "Purpurviolett",
+    "ar": "بنفسجي أرجواني"
+   }
+  },
+  {
+   "code": "RAL 4008",
+   "hex": "#904684",
+   "names": {
+    "en": "Signal violet",
+    "de": "Signalviolett",
+    "ar": "بنفسجي الإشارات"
+   }
+  },
+  {
+   "code": "RAL 4009",
+   "hex": "#A38995",
+   "names": {
+    "en": "Pastel violet",
+    "de": "Pastellviolett",
+    "ar": "بنفسجي باستيل"
+   }
+  },
+  {
+   "code": "RAL 4010",
+   "hex": "#C63678",
+   "names": {
+    "en": "Telemagenta",
+    "de": "Telemagenta",
+    "ar": "ماجنتا الاتصالات"
+   }
+  },
+  {
+   "code": "RAL 4011",
+   "hex": "#8773A1",
+   "names": {
+    "en": "Pearl violet",
+    "de": "Perlviolett",
+    "ar": "بنفسجي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 4012",
+   "hex": "#6B6880",
+   "names": {
+    "en": "Pearl blackberry",
+    "de": "Perlbrombeer",
+    "ar": "توتي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 5000",
+   "hex": "#384C70",
+   "names": {
+    "en": "Violet blue",
+    "de": "Violettblau",
+    "ar": "أزرق بنفسجي"
+   }
+  },
+  {
+   "code": "RAL 5001",
+   "hex": "#1F4764",
+   "names": {
+    "en": "Green blue",
+    "de": "Grünblau",
+    "ar": "أزرق مخضرّ"
+   }
+  },
+  {
+   "code": "RAL 5002",
+   "hex": "#2B2C7C",
+   "names": {
+    "en": "Ultramarine blue",
+    "de": "Ultramarinblau",
+    "ar": "أزرق لازوردي"
+   }
+  },
+  {
+   "code": "RAL 5003",
+   "hex": "#2A3756",
+   "names": {
+    "en": "Sapphire blue",
+    "de": "Saphirblau",
+    "ar": "أزرق زفيري"
+   }
+  },
+  {
+   "code": "RAL 5004",
+   "hex": "#1D1F2A",
+   "names": {
+    "en": "Black blue",
+    "de": "Schwarzblau",
+    "ar": "أزرق مسودّ"
+   }
+  },
+  {
+   "code": "RAL 5005",
+   "hex": "#154889",
+   "names": {
+    "en": "Signal blue",
+    "de": "Signalblau",
+    "ar": "أزرق الإشارات"
+   }
+  },
+  {
+   "code": "RAL 5007",
+   "hex": "#41678D",
+   "names": {
+    "en": "Brillant blue",
+    "de": "Brillantblau",
+    "ar": "أزرق لامع"
+   }
+  },
+  {
+   "code": "RAL 5008",
+   "hex": "#313C48",
+   "names": {
+    "en": "Grey blue",
+    "de": "Graublau",
+    "ar": "أزرق رمادي"
+   }
+  },
+  {
+   "code": "RAL 5009",
+   "hex": "#2E5978",
+   "names": {
+    "en": "Azure blue",
+    "de": "Azurblau",
+    "ar": "أزرق سماوي"
+   }
+  },
+  {
+   "code": "RAL 5010",
+   "hex": "#13447C",
+   "names": {
+    "en": "Gentian blue",
+    "de": "Enzianblau",
+    "ar": "أزرق جنطياني"
+   }
+  },
+  {
+   "code": "RAL 5011",
+   "hex": "#232C3F",
+   "names": {
+    "en": "Steel blue",
+    "de": "Stahlblau",
+    "ar": "أزرق فولاذي"
+   }
+  },
+  {
+   "code": "RAL 5012",
+   "hex": "#3481B8",
+   "names": {
+    "en": "Light blue",
+    "de": "Lichtblau",
+    "ar": "أزرق فاتح"
+   }
+  },
+  {
+   "code": "RAL 5013",
+   "hex": "#232D53",
+   "names": {
+    "en": "Cobalt blue",
+    "de": "Kobaltblau",
+    "ar": "أزرق كوبالتي"
+   }
+  },
+  {
+   "code": "RAL 5014",
+   "hex": "#6C7C98",
+   "names": {
+    "en": "Pigeon blue",
+    "de": "Taubenblau",
+    "ar": "أزرق حمامي"
+   }
+  },
+  {
+   "code": "RAL 5015",
+   "hex": "#2874B2",
+   "names": {
+    "en": "Sky blue",
+    "de": "Himmelblau",
+    "ar": "أزرق السماء"
+   }
+  },
+  {
+   "code": "RAL 5017",
+   "hex": "#0E518D",
+   "names": {
+    "en": "Traffic blue",
+    "de": "Verkehrsblau",
+    "ar": "أزرق المرور"
+   }
+  },
+  {
+   "code": "RAL 5018",
+   "hex": "#21888F",
+   "names": {
+    "en": "Turquoise blue",
+    "de": "Türkisblau",
+    "ar": "أزرق فيروزي"
+   }
+  },
+  {
+   "code": "RAL 5019",
+   "hex": "#1A5784",
+   "names": {
+    "en": "Capri blue",
+    "de": "Capriblau",
+    "ar": "أزرق كابري"
+   }
+  },
+  {
+   "code": "RAL 5020",
+   "hex": "#0B4151",
+   "names": {
+    "en": "Ocean blue",
+    "de": "Ozeanblau",
+    "ar": "أزرق محيطي"
+   }
+  },
+  {
+   "code": "RAL 5021",
+   "hex": "#07737A",
+   "names": {
+    "en": "Water blue",
+    "de": "Wasserblau",
+    "ar": "أزرق مائي"
+   }
+  },
+  {
+   "code": "RAL 5022",
+   "hex": "#2F2A5A",
+   "names": {
+    "en": "Night blue",
+    "de": "Nachtblau",
+    "ar": "أزرق ليلي"
+   }
+  },
+  {
+   "code": "RAL 5023",
+   "hex": "#4D668E",
+   "names": {
+    "en": "Distant blue",
+    "de": "Fernblau",
+    "ar": "أزرق بعيد"
+   }
+  },
+  {
+   "code": "RAL 5024",
+   "hex": "#6A93B0",
+   "names": {
+    "en": "Pastel blue",
+    "de": "Pastellblau",
+    "ar": "أزرق باستيل"
+   }
+  },
+  {
+   "code": "RAL 5025",
+   "hex": "#296478",
+   "names": {
+    "en": "Pearl gentian blue",
+    "de": "Perlenzian",
+    "ar": "أزرق جنطياني لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 5026",
+   "hex": "#102C54",
+   "names": {
+    "en": "Pearl night blue",
+    "de": "Perlnachtblau",
+    "ar": "أزرق ليلي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 6000",
+   "hex": "#327662",
+   "names": {
+    "en": "Patina green",
+    "de": "Patinagrün",
+    "ar": "أخضر الزنجار"
+   }
+  },
+  {
+   "code": "RAL 6001",
+   "hex": "#28713E",
+   "names": {
+    "en": "Emerald green",
+    "de": "Smaragdgrün",
+    "ar": "أخضر زمردي"
+   }
+  },
+  {
+   "code": "RAL 6002",
+   "hex": "#276235",
+   "names": {
+    "en": "Leaf green",
+    "de": "Laubgrün",
+    "ar": "أخضر ورقي"
+   }
+  },
+  {
+   "code": "RAL 6003",
+   "hex": "#4B573E",
+   "names": {
+    "en": "Olive green",
+    "de": "Olivgrün",
+    "ar": "أخضر زيتوني"
+   }
+  },
+  {
+   "code": "RAL 6004",
+   "hex": "#0E4243",
+   "names": {
+    "en": "Blue green",
+    "de": "Blaugrün",
+    "ar": "أخضر مزرقّ"
+   }
+  },
+  {
+   "code": "RAL 6005",
+   "hex": "#0F4336",
+   "names": {
+    "en": "Moss green",
+    "de": "Moosgrün",
+    "ar": "أخضر طحلبي"
+   }
+  },
+  {
+   "code": "RAL 6006",
+   "hex": "#40433B",
+   "names": {
+    "en": "Grey olive",
+    "de": "Grauoliv",
+    "ar": "زيتوني رمادي"
+   }
+  },
+  {
+   "code": "RAL 6007",
+   "hex": "#283424",
+   "names": {
+    "en": "Bottle green",
+    "de": "Flaschengrün",
+    "ar": "أخضر زجاجي"
+   }
+  },
+  {
+   "code": "RAL 6008",
+   "hex": "#35382E",
+   "names": {
+    "en": "Brown green",
+    "de": "Braungrün",
+    "ar": "أخضر بني"
+   }
+  },
+  {
+   "code": "RAL 6009",
+   "hex": "#26392F",
+   "names": {
+    "en": "Fir green",
+    "de": "Tannengrün",
+    "ar": "أخضر التنوب"
+   }
+  },
+  {
+   "code": "RAL 6010",
+   "hex": "#3E753B",
+   "names": {
+    "en": "Grass green",
+    "de": "Grasgrün",
+    "ar": "أخضر عشبي"
+   }
+  },
+  {
+   "code": "RAL 6011",
+   "hex": "#68825B",
+   "names": {
+    "en": "Reseda green",
+    "de": "Resedagrün",
+    "ar": "أخضر الريسيدا"
+   }
+  },
+  {
+   "code": "RAL 6012",
+   "hex": "#31403D",
+   "names": {
+    "en": "Black green",
+    "de": "Schwarzgrün",
+    "ar": "أخضر مسودّ"
+   }
+  },
+  {
+   "code": "RAL 6013",
+   "hex": "#797C5A",
+   "names": {
+    "en": "Reed green",
+    "de": "Schilfgrün",
+    "ar": "أخضر القصب"
+   }
+  },
+  {
+   "code": "RAL 6014",
+   "hex": "#444337",
+   "names": {
+    "en": "Yellow olive",
+    "de": "Gelboliv",
+    "ar": "زيتوني مصفرّ"
+   }
+  },
+  {
+   "code": "RAL 6015",
+   "hex": "#3D403A",
+   "names": {
+    "en": "Black olive",
+    "de": "Schwarzoliv",
+    "ar": "زيتوني أسود"
+   }
+  },
+  {
+   "code": "RAL 6016",
+   "hex": "#026A52",
+   "names": {
+    "en": "Turquoise green",
+    "de": "Türkisgrün",
+    "ar": "أخضر فيروزي"
+   }
+  },
+  {
+   "code": "RAL 6017",
+   "hex": "#468641",
+   "names": {
+    "en": "May green",
+    "de": "Maigrün",
+    "ar": "أخضر ربيعي"
+   }
+  },
+  {
+   "code": "RAL 6018",
+   "hex": "#48A43F",
+   "names": {
+    "en": "Yellow green",
+    "de": "Gelbgrün",
+    "ar": "أخضر مصفرّ"
+   }
+  },
+  {
+   "code": "RAL 6019",
+   "hex": "#B7D9B1",
+   "names": {
+    "en": "Pastel green",
+    "de": "Weißgrün",
+    "ar": "أخضر باستيل"
+   }
+  },
+  {
+   "code": "RAL 6020",
+   "hex": "#354733",
+   "names": {
+    "en": "Chrome green",
+    "de": "Chromoxidgrün",
+    "ar": "أخضر كرومي"
+   }
+  },
+  {
+   "code": "RAL 6021",
+   "hex": "#86A47C",
+   "names": {
+    "en": "Pale green",
+    "de": "Blaßgrün",
+    "ar": "أخضر شاحب"
+   }
+  },
+  {
+   "code": "RAL 6022",
+   "hex": "#3E3C32",
+   "names": {
+    "en": "Olive drab",
+    "de": "Braunoliv",
+    "ar": "زيتوني باهت"
+   }
+  },
+  {
+   "code": "RAL 6024",
+   "hex": "#008754",
+   "names": {
+    "en": "Traffic green",
+    "de": "Verkehrsgrün",
+    "ar": "أخضر المرور"
+   }
+  },
+  {
+   "code": "RAL 6025",
+   "hex": "#53753C",
+   "names": {
+    "en": "Fern green",
+    "de": "Farngrün",
+    "ar": "أخضر سرخسي"
+   }
+  },
+  {
+   "code": "RAL 6026",
+   "hex": "#005D52",
+   "names": {
+    "en": "Opal green",
+    "de": "Opalgrün",
+    "ar": "أخضر أوبالي"
+   }
+  },
+  {
+   "code": "RAL 6027",
+   "hex": "#81C0BB",
+   "names": {
+    "en": "Light green",
+    "de": "Lichtgrün",
+    "ar": "أخضر فاتح"
+   }
+  },
+  {
+   "code": "RAL 6028",
+   "hex": "#2D5546",
+   "names": {
+    "en": "Pine green",
+    "de": "Kieferngrün",
+    "ar": "أخضر صنوبري"
+   }
+  },
+  {
+   "code": "RAL 6029",
+   "hex": "#007243",
+   "names": {
+    "en": "Mint green",
+    "de": "Minzgrün",
+    "ar": "أخضر نعناعي"
+   }
+  },
+  {
+   "code": "RAL 6031",
+   "hex": "#495746",
+   "names": {
+    "en": "Bronze green",
+    "de": "Bronzegrün",
+    "ar": "أخضر برونزي"
+   }
+  },
+  {
+   "code": "RAL 6032",
+   "hex": "#0F8558",
+   "names": {
+    "en": "Signal green",
+    "de": "Signalgrün",
+    "ar": "أخضر الإشارات"
+   }
+  },
+  {
+   "code": "RAL 6033",
+   "hex": "#478A84",
+   "names": {
+    "en": "Mint turquoise",
+    "de": "Minttürkis",
+    "ar": "فيروزي نعناعي"
+   }
+  },
+  {
+   "code": "RAL 6034",
+   "hex": "#7FB0B2",
+   "names": {
+    "en": "Pastel turquoise",
+    "de": "Pastelltürkis",
+    "ar": "فيروزي باستيل"
+   }
+  },
+  {
+   "code": "RAL 6035",
+   "hex": "#1B542C",
+   "names": {
+    "en": "Pearl green",
+    "de": "Perlgrün",
+    "ar": "أخضر لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 6036",
+   "hex": "#005D4C",
+   "names": {
+    "en": "Pearl opal green",
+    "de": "Perlopalgrün",
+    "ar": "أخضر أوبالي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 6037",
+   "hex": "#25E712",
+   "names": {
+    "en": "Pure green",
+    "de": "Reingrün",
+    "ar": "أخضر نقي"
+   }
+  },
+  {
+   "code": "RAL 6038",
+   "hex": "#00F700",
+   "names": {
+    "en": "Luminous green",
+    "de": "Leuchtgrün",
+    "ar": "أخضر فسفوري"
+   },
+   "special": "luminous"
+  },
+  {
+   "code": "RAL 6039",
+   "hex": "#B3C43E",
+   "names": {
+    "en": "Fibrous green",
+    "de": "Fasergrün",
+    "ar": "أخضر ليفي"
+   }
+  },
+  {
+   "code": "RAL 7000",
+   "hex": "#7E8B92",
+   "names": {
+    "en": "Squirrel grey",
+    "de": "Fehgrau",
+    "ar": "رمادي سنجابي"
+   }
+  },
+  {
+   "code": "RAL 7001",
+   "hex": "#8F999F",
+   "names": {
+    "en": "Silver grey",
+    "de": "Silbergrau",
+    "ar": "رمادي فضي"
+   }
+  },
+  {
+   "code": "RAL 7002",
+   "hex": "#817F68",
+   "names": {
+    "en": "Olive grey",
+    "de": "Olivgrau",
+    "ar": "رمادي زيتوني"
+   }
+  },
+  {
+   "code": "RAL 7003",
+   "hex": "#7A7B6D",
+   "names": {
+    "en": "Moss grey",
+    "de": "Moosgrau",
+    "ar": "رمادي طحلبي"
+   }
+  },
+  {
+   "code": "RAL 7004",
+   "hex": "#9EA0A1",
+   "names": {
+    "en": "Signal grey",
+    "de": "Signalgrau",
+    "ar": "رمادي الإشارات"
+   }
+  },
+  {
+   "code": "RAL 7005",
+   "hex": "#6B716F",
+   "names": {
+    "en": "Mouse grey",
+    "de": "Mausgrau",
+    "ar": "رمادي فأري"
+   }
+  },
+  {
+   "code": "RAL 7006",
+   "hex": "#756F61",
+   "names": {
+    "en": "Beige grey",
+    "de": "Beigegrau",
+    "ar": "رمادي بيج"
+   }
+  },
+  {
+   "code": "RAL 7008",
+   "hex": "#746643",
+   "names": {
+    "en": "Khaki grey",
+    "de": "Khakigrau",
+    "ar": "رمادي كاكي"
+   }
+  },
+  {
+   "code": "RAL 7009",
+   "hex": "#5B6259",
+   "names": {
+    "en": "Green grey",
+    "de": "Grüngrau",
+    "ar": "رمادي مخضرّ"
+   }
+  },
+  {
+   "code": "RAL 7010",
+   "hex": "#575D57",
+   "names": {
+    "en": "Tarpaulin grey",
+    "de": "Zeltgrau",
+    "ar": "رمادي المشمّع"
+   }
+  },
+  {
+   "code": "RAL 7011",
+   "hex": "#555D61",
+   "names": {
+    "en": "Iron grey",
+    "de": "Eisengrau",
+    "ar": "رمادي حديدي"
+   }
+  },
+  {
+   "code": "RAL 7012",
+   "hex": "#596163",
+   "names": {
+    "en": "Basalt grey",
+    "de": "Basaltgrau",
+    "ar": "رمادي بازلتي"
+   }
+  },
+  {
+   "code": "RAL 7013",
+   "hex": "#555548",
+   "names": {
+    "en": "Brown grey",
+    "de": "Braungrau",
+    "ar": "رمادي بني"
+   }
+  },
+  {
+   "code": "RAL 7015",
+   "hex": "#51565C",
+   "names": {
+    "en": "Slate grey",
+    "de": "Schiefergrau",
+    "ar": "رمادي أردوازي"
+   }
+  },
+  {
+   "code": "RAL 7016",
+   "hex": "#373F43",
+   "names": {
+    "en": "Anthracite grey",
+    "de": "Anthrazitgrau",
+    "ar": "رمادي أنثراسيت"
+   }
+  },
+  {
+   "code": "RAL 7021",
+   "hex": "#2E3234",
+   "names": {
+    "en": "Black grey",
+    "de": "Schwarzgrau",
+    "ar": "رمادي مسودّ"
+   }
+  },
+  {
+   "code": "RAL 7022",
+   "hex": "#4B4D46",
+   "names": {
+    "en": "Umbra grey",
+    "de": "Umbragrau",
+    "ar": "رمادي أمبري"
+   }
+  },
+  {
+   "code": "RAL 7023",
+   "hex": "#818479",
+   "names": {
+    "en": "Concrete grey",
+    "de": "Betongrau",
+    "ar": "رمادي خرساني"
+   }
+  },
+  {
+   "code": "RAL 7024",
+   "hex": "#474A50",
+   "names": {
+    "en": "Graphite grey",
+    "de": "Graphitgrau",
+    "ar": "رمادي غرافيتي"
+   }
+  },
+  {
+   "code": "RAL 7026",
+   "hex": "#374447",
+   "names": {
+    "en": "Granite grey",
+    "de": "Granitgrau",
+    "ar": "رمادي غرانيتي"
+   }
+  },
+  {
+   "code": "RAL 7030",
+   "hex": "#939388",
+   "names": {
+    "en": "Stone grey",
+    "de": "Steingrau",
+    "ar": "رمادي حجري"
+   }
+  },
+  {
+   "code": "RAL 7031",
+   "hex": "#5D6970",
+   "names": {
+    "en": "Blue grey",
+    "de": "Blaugrau",
+    "ar": "رمادي مزرقّ"
+   }
+  },
+  {
+   "code": "RAL 7032",
+   "hex": "#B9B9A8",
+   "names": {
+    "en": "Pebble grey",
+    "de": "Kieselgrau",
+    "ar": "رمادي حصوي"
+   }
+  },
+  {
+   "code": "RAL 7033",
+   "hex": "#818979",
+   "names": {
+    "en": "Cement grey",
+    "de": "Zementgrau",
+    "ar": "رمادي إسمنتي"
+   }
+  },
+  {
+   "code": "RAL 7034",
+   "hex": "#939176",
+   "names": {
+    "en": "Yellow grey",
+    "de": "Gelbgrau",
+    "ar": "رمادي مصفرّ"
+   }
+  },
+  {
+   "code": "RAL 7035",
+   "hex": "#CBD0CC",
+   "names": {
+    "en": "Light grey",
+    "de": "Lichtgrau",
+    "ar": "رمادي فاتح"
+   }
+  },
+  {
+   "code": "RAL 7036",
+   "hex": "#9A9697",
+   "names": {
+    "en": "Platinum grey",
+    "de": "Platingrau",
+    "ar": "رمادي بلاتيني"
+   }
+  },
+  {
+   "code": "RAL 7037",
+   "hex": "#7C7F7E",
+   "names": {
+    "en": "Dusty grey",
+    "de": "Staubgrau",
+    "ar": "رمادي غباري"
+   }
+  },
+  {
+   "code": "RAL 7038",
+   "hex": "#B4B8B0",
+   "names": {
+    "en": "Agate grey",
+    "de": "Achatgrau",
+    "ar": "رمادي عقيقي"
+   }
+  },
+  {
+   "code": "RAL 7039",
+   "hex": "#6B695F",
+   "names": {
+    "en": "Quartz grey",
+    "de": "Quarzgrau",
+    "ar": "رمادي كوارتزي"
+   }
+  },
+  {
+   "code": "RAL 7040",
+   "hex": "#9DA3A6",
+   "names": {
+    "en": "Window grey",
+    "de": "Fenstergrau",
+    "ar": "رمادي النوافذ"
+   }
+  },
+  {
+   "code": "RAL 7042",
+   "hex": "#8F9695",
+   "names": {
+    "en": "Traffic grey A",
+    "de": "Verkehrsgrau A",
+    "ar": "رمادي المرور A"
+   }
+  },
+  {
+   "code": "RAL 7043",
+   "hex": "#4E5451",
+   "names": {
+    "en": "Traffic grey B",
+    "de": "Verkehrsgrau B",
+    "ar": "رمادي المرور B"
+   }
+  },
+  {
+   "code": "RAL 7044",
+   "hex": "#BDBDB2",
+   "names": {
+    "en": "Silk grey",
+    "de": "Seidengrau",
+    "ar": "رمادي حريري"
+   }
+  },
+  {
+   "code": "RAL 7045",
+   "hex": "#91969A",
+   "names": {
+    "en": "Telegrey 1",
+    "de": "Telegrau 1",
+    "ar": "رمادي الاتصالات 1"
+   }
+  },
+  {
+   "code": "RAL 7046",
+   "hex": "#82898E",
+   "names": {
+    "en": "Telegrey 2",
+    "de": "Telegrau 2",
+    "ar": "رمادي الاتصالات 2"
+   }
+  },
+  {
+   "code": "RAL 7047",
+   "hex": "#CFD0CF",
+   "names": {
+    "en": "Telegrey 4",
+    "de": "Telegrau 4",
+    "ar": "رمادي الاتصالات 4"
+   }
+  },
+  {
+   "code": "RAL 7048",
+   "hex": "#888175",
+   "names": {
+    "en": "Pearl mouse grey",
+    "de": "Perlmausgrau",
+    "ar": "رمادي فأري لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 8000",
+   "hex": "#887142",
+   "names": {
+    "en": "Green brown",
+    "de": "Grünbraun",
+    "ar": "بني مخضرّ"
+   }
+  },
+  {
+   "code": "RAL 8001",
+   "hex": "#9C6B30",
+   "names": {
+    "en": "Ochre brown",
+    "de": "Ockerbraun",
+    "ar": "بني مغري"
+   }
+  },
+  {
+   "code": "RAL 8002",
+   "hex": "#7B5141",
+   "names": {
+    "en": "Signal brown",
+    "de": "Signalbraun",
+    "ar": "بني الإشارات"
+   }
+  },
+  {
+   "code": "RAL 8003",
+   "hex": "#80542F",
+   "names": {
+    "en": "Clay brown",
+    "de": "Lehmbraun",
+    "ar": "بني طيني"
+   }
+  },
+  {
+   "code": "RAL 8004",
+   "hex": "#8F4E35",
+   "names": {
+    "en": "Copper brown",
+    "de": "Kupferbraun",
+    "ar": "بني نحاسي"
+   }
+  },
+  {
+   "code": "RAL 8007",
+   "hex": "#6F4A2F",
+   "names": {
+    "en": "Fawn brown",
+    "de": "Rehbraun",
+    "ar": "بني غزالي"
+   }
+  },
+  {
+   "code": "RAL 8008",
+   "hex": "#6F4F28",
+   "names": {
+    "en": "Olive brown",
+    "de": "Olivbraun",
+    "ar": "بني زيتوني"
+   }
+  },
+  {
+   "code": "RAL 8011",
+   "hex": "#5A3A29",
+   "names": {
+    "en": "Nut brown",
+    "de": "Nußbraun",
+    "ar": "بني جوزي"
+   }
+  },
+  {
+   "code": "RAL 8012",
+   "hex": "#673831",
+   "names": {
+    "en": "Red brown",
+    "de": "Rotbraun",
+    "ar": "بني محمرّ"
+   }
+  },
+  {
+   "code": "RAL 8014",
+   "hex": "#49392D",
+   "names": {
+    "en": "Sepia brown",
+    "de": "Sepiabraun",
+    "ar": "بني سيبيا"
+   }
+  },
+  {
+   "code": "RAL 8015",
+   "hex": "#633A34",
+   "names": {
+    "en": "Chestnut brown",
+    "de": "Kastanienbraun",
+    "ar": "بني كستنائي"
+   }
+  },
+  {
+   "code": "RAL 8016",
+   "hex": "#4C2F26",
+   "names": {
+    "en": "Mahogany brown",
+    "de": "Mahagonibraun",
+    "ar": "بني ماهوجني"
+   }
+  },
+  {
+   "code": "RAL 8017",
+   "hex": "#44322D",
+   "names": {
+    "en": "Chocolate brown",
+    "de": "Schokoladenbraun",
+    "ar": "بني شوكولاتي"
+   }
+  },
+  {
+   "code": "RAL 8019",
+   "hex": "#3F3A3A",
+   "names": {
+    "en": "Grey brown",
+    "de": "Graubraun",
+    "ar": "بني رمادي"
+   }
+  },
+  {
+   "code": "RAL 8022",
+   "hex": "#211F20",
+   "names": {
+    "en": "Black brown",
+    "de": "Schwarzbraun",
+    "ar": "بني مسودّ"
+   }
+  },
+  {
+   "code": "RAL 8023",
+   "hex": "#A65E2F",
+   "names": {
+    "en": "Orange brown",
+    "de": "Orangebraun",
+    "ar": "بني برتقالي"
+   }
+  },
+  {
+   "code": "RAL 8024",
+   "hex": "#79553C",
+   "names": {
+    "en": "Beige brown",
+    "de": "Beigebraun",
+    "ar": "بني بيج"
+   }
+  },
+  {
+   "code": "RAL 8025",
+   "hex": "#755C49",
+   "names": {
+    "en": "Pale brown",
+    "de": "Blaßbraun",
+    "ar": "بني شاحب"
+   }
+  },
+  {
+   "code": "RAL 8028",
+   "hex": "#4E3B2B",
+   "names": {
+    "en": "Terra brown",
+    "de": "Terrabraun",
+    "ar": "بني ترابي"
+   }
+  },
+  {
+   "code": "RAL 8029",
+   "hex": "#773C27",
+   "names": {
+    "en": "Pearl copper",
+    "de": "Perlkupfer",
+    "ar": "نحاسي لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 9001",
+   "hex": "#EFEBDC",
+   "names": {
+    "en": "Cream",
+    "de": "Cremeweiß",
+    "ar": "كريمي"
+   }
+  },
+  {
+   "code": "RAL 9002",
+   "hex": "#DDDED4",
+   "names": {
+    "en": "Grey white",
+    "de": "Grauweiß",
+    "ar": "أبيض رمادي"
+   }
+  },
+  {
+   "code": "RAL 9003",
+   "hex": "#FFFFFF",
+   "names": {
+    "en": "Signal white",
+    "de": "Signalweiß",
+    "ar": "أبيض الإشارات"
+   }
+  },
+  {
+   "code": "RAL 9004",
+   "hex": "#2E3032",
+   "names": {
+    "en": "Signal black",
+    "de": "Signalschwarz",
+    "ar": "أسود الإشارات"
+   }
+  },
+  {
+   "code": "RAL 9005",
+   "hex": "#131516",
+   "names": {
+    "en": "Jet black",
+    "de": "Tiefschwarz",
+    "ar": "أسود فاحم"
+   }
+  },
+  {
+   "code": "RAL 9006",
+   "hex": "#A5A8A6",
+   "names": {
+    "en": "White aluminium",
+    "de": "Weißaluminium",
+    "ar": "ألمنيوم أبيض"
+   },
+   "special": "metallic"
+  },
+  {
+   "code": "RAL 9007",
+   "hex": "#8F8F8C",
+   "names": {
+    "en": "Grey aluminium",
+    "de": "Graualuminium",
+    "ar": "ألمنيوم رمادي"
+   },
+   "special": "metallic"
+  },
+  {
+   "code": "RAL 9010",
+   "hex": "#F7F9EF",
+   "names": {
+    "en": "Pure white",
+    "de": "Reinweiß",
+    "ar": "أبيض نقي"
+   }
+  },
+  {
+   "code": "RAL 9011",
+   "hex": "#1C1C1C",
+   "names": {
+    "en": "Graphite black",
+    "de": "Graphitschwarz",
+    "ar": "أسود غرافيتي"
+   }
+  },
+  {
+   "code": "RAL 9012",
+   "hex": "#FFFDE6",
+   "names": {
+    "en": "Cleanroom white",
+    "de": "Reinraumweiß",
+    "ar": "أبيض الغرف النظيفة"
+   }
+  },
+  {
+   "code": "RAL 9016",
+   "hex": "#F7FBF5",
+   "names": {
+    "en": "Traffic white",
+    "de": "Verkehrsweiß",
+    "ar": "أبيض المرور"
+   }
+  },
+  {
+   "code": "RAL 9017",
+   "hex": "#2A2D2F",
+   "names": {
+    "en": "Traffic black",
+    "de": "Verkehrsschwarz",
+    "ar": "أسود المرور"
+   }
+  },
+  {
+   "code": "RAL 9018",
+   "hex": "#CFD3CD",
+   "names": {
+    "en": "Papyrus white",
+    "de": "Papyrusweiß",
+    "ar": "أبيض بردي"
+   }
+  },
+  {
+   "code": "RAL 9022",
+   "hex": "#858583",
+   "names": {
+    "en": "Pearl light grey",
+    "de": "Perlhellgrau",
+    "ar": "رمادي فاتح لؤلؤي"
+   },
+   "special": "pearl"
+  },
+  {
+   "code": "RAL 9023",
+   "hex": "#7E8182",
+   "names": {
+    "en": "Pearl dark grey",
+    "de": "Perldunkelgrau",
+    "ar": "رمادي غامق لؤلؤي"
+   },
+   "special": "pearl"
+  }
+ ]
+}

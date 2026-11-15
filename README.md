@@ -3,12 +3,14 @@
 AI-assisted paint visualizer: upload a photo of a room or facade, select the walls and repaint them
 realistically — shadows, light gradients and texture are preserved. Arabic (RTL, default), German and English.
 
-> **Status: Phase 2 of 7.**
+> **Status: Phase 3 of 7.**
 > Phase 1: project setup, i18n with RTL, photo upload, manual masking (brush, eraser, lasso, edge softness,
 > undo/redo, multiple surfaces), real-time WebGL CIELAB recoloring with finishes, before/after slider, JPG download.
 > Phase 2: AI wall detection with Segment Anything in the browser — tap a wall to select it, add/remove
 > points, smaller/larger alternatives, "detect all surfaces", edge snapping, server fallback for slow devices.
-> Next: color database & palettes, paint calculator & PDF, accounts & sharing, live camera, shop.
+> Phase 3: color database — RAL Classic (217) and NCS (2,472 + any valid NCS code), search by code or name in
+> Arabic/German/English, family filters, eyedropper, closest paint by ΔE2000, harmony and style palettes.
+> Next: paint calculator & PDF, accounts & sharing, live camera, shop.
 
 ## Quick start
 
@@ -35,6 +37,7 @@ To test on a phone in the same network: `npm run dev -- -H 0.0.0.0` and open `ht
 | `npm run test:e2e` | Builds, then runs Playwright on desktop Chrome and an emulated Android phone (incl. touch). The AI tests download the real model from Hugging Face. |
 | `npm run typecheck` / `npm run lint` | TypeScript (strict) / ESLint |
 | `npm run samples` | Regenerates the two synthetic sample photos in `public/samples/` |
+| `node scripts/build-ral-data.mjs` | Rebuilds the RAL Classic data file from its sources |
 
 ## How the recoloring works
 
@@ -54,6 +57,31 @@ shader `lib/recolor/shaders.ts`:
 
 All surfaces are composited in one pass per surface on the GPU (a few ms on phones; the in-app "Render"
 readout shows the measured time). Masks are 8-bit, edited on the CPU, uploaded as dirty-rectangle texture updates.
+
+## Color database (RAL Classic & NCS)
+
+- **RAL Classic** (`lib/color/data/ral-classic.json`, built by `node scripts/build-ral-data.mjs`): 217 colors with
+  code, hex and names in Arabic, German and English. Hex values come from Wikipedia's *List of RAL colours*
+  (CC BY-SA 4.0); RAL's binding values are only available in the licensed RAL DIGITAL. Pearl, fluorescent and
+  metallic finishes are flagged and never suggested as wall paint.
+- **NCS** (`lib/color/ncs.ts`): NCS Colour AB's colorimetric data is licensed, so colors are **calculated from the
+  NCS notation** (blackness, chromaticness, hue). Elementary hues Y/R/B/G are anchored at the unique-hue angles in
+  CIELAB, intermediate hues interpolated, and nuances mixed like the HWB model, calibrated against published screen
+  approximations. The chart offers 2,472 notations on the standard steps for 40 hues plus the grey scale; any valid
+  code (e.g. `S 1052-Y92R`) can be typed. All NCS colors are marked "approximate".
+- **Data model** (`lib/color/catalog.ts`): `PaintColor` has collection, code, localized names, hex, Lab, family,
+  and optional manufacturer fields (`brand`, `pricePerLiter`, `coverageM2PerLiter`, `labMeasured` for official
+  measured values) so a seller's own collections and prices can be added later.
+- **Search:** codes in any format (`9010`, `ral9010`, `S 1050-Y90R`, `1050y90r`), names in all languages (accents
+  and Arabic letter variants normalized), family filter computed from CIELAB.
+- **Closest paint:** CIEDE2000 against the whole catalogue (or one collection), with a quality label.
+- **Ideas** (`lib/color/palettes.ts`): complementary, analogous, triadic, split-complementary and tone-on-tone palettes
+  generated in LCh from the current color or from colors detected in the photo (k-means in Lab, excluding the
+  surfaces being painted), each mapped to the closest real paint; five style presets (Modern, Scandinavian,
+  Mediterranean, Classic, Arabic/Moroccan).
+
+> Before commercial launch, check whether your use of RAL and NCS names/codes requires a license from RAL gGmbH
+> or NCS Colour AB (both offer digital licences). Official measured values can be imported into `labMeasured`.
 
 ## AI wall detection (Segment Anything)
 
@@ -84,7 +112,7 @@ readout shows the measured time). Masks are 8-bit, edited on the CPU, uploaded a
 ```
 app/[locale]/            pages (home, editor); root layout sets lang/dir
 components/editor/       Editor, Stage (canvas + gestures), Toolbar, panels
-lib/color/               sRGB/XYZ/CIELAB/LCh conversions, CIEDE2000
+lib/color/               sRGB/XYZ/CIELAB/LCh, CIEDE2000, catalogue (RAL/NCS), NCS model, palettes
 lib/recolor/             recolor model, GLSL shaders, WebGL renderer
 lib/mask/                brush/eraser/blur/merge ops, polygon raster, undo history, edge refinement
 lib/segmentation/        SAM worker, client (status, fallback), post-processing, IndexedDB cache
@@ -99,6 +127,8 @@ tests/unit/  e2e/        Vitest and Playwright tests
 - **Smart select** (`S`, default): tap a wall. Tap more points to extend it; choose *Remove* and tap to take
   areas away. *Smaller / Larger* switch between alternative selections; *Done* (or Esc) finishes.
 - **Detect all surfaces:** highlights every surface found; tap the ones to paint, then *Add selected*.
+- **Color chart / Ideas / Match a color:** pick a RAL or NCS paint, get palette ideas, or use *Pick from photo*
+  (eyedropper) to find the closest real paints.
 - **Brush / Eraser** (`B` / `E`): paint the selected surface; `[` `]` change brush size.
 - **Lasso** (`L`): tap points, tap the first point or press *Done*/Enter to close; Esc cancels, Backspace removes a point. Add or remove mode.
 - **Move** (`H`), mouse wheel / pinch to zoom, two fingers to pan.

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/client";
-import { hexToLab } from "@/lib/color/lab";
+import { hexToLab, rgbToHex, type Lab } from "@/lib/color/lab";
+import { getColor, type PaintColor } from "@/lib/color/catalog";
+import { dominantColors } from "@/lib/color/palettes";
 import { EditorDocument } from "@/lib/editor/document";
 import { ImageLoadError, loadImageFile, loadImageUrl, type LoadedImage } from "@/lib/image/load";
 import { diffRect, type BrushMode, type Rect } from "@/lib/mask/ops";
@@ -16,11 +18,13 @@ import { AiStatus } from "./AiStatus";
 import { Toolbar } from "./Toolbar";
 import { SurfacesPanel } from "./SurfacesPanel";
 import { ColorPanel } from "./ColorPanel";
+import type { PickerTab } from "./ColorPicker";
 import { UploadPanel } from "./UploadPanel";
 import { CheckIcon, DownloadIcon, ImageIcon, MinusIcon, PlusIcon, SparkleIcon, SpinnerIcon } from "./icons";
 import type { Surface, Tool } from "./types";
 
-const DEFAULT_COLORS = ["#8E9F88", "#D6C7AE", "#7C97AE", "#C97B5A", "#ECE6DA", "#5E7262"];
+/** Starting paints for new surfaces (real catalogue colours). */
+const DEFAULT_PAINTS = ["RAL 6021", "RAL 1015", "RAL 5024", "RAL 3012", "RAL 7044", "RAL 6011"];
 
 /** Distinct tints for detected surfaces (linear 0..1 RGB). */
 const PICK_COLORS: [number, number, number][] = [
@@ -90,6 +94,11 @@ export function Editor() {
   const [refining, setRefining] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Colour picker
+  const [pickerTab, setPickerTab] = useState<PickerTab>("catalog");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [eyedropper, setEyedropper] = useState(false);
+
   const surfacesRef = useRef(surfaces);
   surfacesRef.current = surfaces;
   const surfaceCount = useRef(0);
@@ -99,12 +108,13 @@ export function Editor() {
       const n = ++surfaceCount.current;
       const id = newId();
       d.createMask(id);
-      const hex = DEFAULT_COLORS[(n - 1) % DEFAULT_COLORS.length] ?? "#8E9F88";
+      const paint = getColor(`ral-classic:${DEFAULT_PAINTS[(n - 1) % DEFAULT_PAINTS.length]}`)!;
       return {
         id,
         name: t("surfaces.defaultName", { n }),
-        hex,
-        lab: hexToLab(hex),
+        hex: paint.hex,
+        paintId: paint.id,
+        lab: paint.lab,
         finish: "matte",
         brightness: 1,
         feather: 0,
@@ -179,6 +189,64 @@ export function Editor() {
     },
     [doc, refreshSurface],
   );
+
+  /* ---------- colours ---------- */
+
+  const pickPaint = (paint: PaintColor) => {
+    if (!selectedId) return;
+    patchSurface(selectedId, { hex: paint.hex, lab: paint.lab, paintId: paint.id });
+  };
+
+  const pickCustom = (hex: string) => {
+    if (!selectedId) return;
+    patchSurface(selectedId, { hex, lab: hexToLab(hex), paintId: null });
+  };
+
+  /** Assign palette colours to the surfaces in order (painted surfaces first). */
+  const applyPalette = (paints: PaintColor[]) => {
+    if (!paints.length) return;
+    const order = [...surfacesRef.current].sort((a, b) => Number(b.coverage > 0) - Number(a.coverage > 0));
+    const byId = new Map(order.map((s, i) => [s.id, paints[i % paints.length]!]));
+    setSurfaces((list) => list.map((s) => {
+      const p = byId.get(s.id);
+      return p ? { ...s, hex: p.hex, lab: p.lab, paintId: p.id } : s;
+    }));
+  };
+
+  /** Average colour of the original photo around a point (5×5). */
+  const sampleColor = (x: number, y: number): string | null => {
+    if (!image) return null;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const px = Math.round(x) + dx;
+        const py = Math.round(y) + dy;
+        if (px < 0 || py < 0 || px >= image.width || py >= image.height) continue;
+        const i = (py * image.width + px) * 4;
+        r += image.pixels[i]!;
+        g += image.pixels[i + 1]!;
+        b += image.pixels[i + 2]!;
+        n++;
+      }
+    return n ? rgbToHex({ r: r / n, g: g / n, b: b / n }) : null;
+  };
+
+  const onEyedrop = (p: { x: number; y: number }) => {
+    const hex = sampleColor(p.x, p.y);
+    setEyedropper(false);
+    if (!hex) return;
+    setPicked(hex);
+    setPickerTab("match");
+  };
+
+  /** Dominant colours of the photo outside the surfaces being painted (furniture, floor…). */
+  const photoColors = useCallback((): Lab[] => {
+    if (!image || !doc) return [];
+    const masks = surfacesRef.current.map((s) => doc.rawMask(s.id)).filter((m): m is Uint8Array => !!m && m.some((v) => v > 0));
+    return dominantColors(image.pixels, image.width, image.height, 5, (i) => masks.some((m) => m[i]! > 127)).map((c) => c.lab);
+    // Recompute when surfaces (and thus masks) change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [image, doc, surfaces]);
 
   /* ---------- AI segmentation ---------- */
 
@@ -583,7 +651,9 @@ export function Editor() {
   }
 
   let topChip: React.ReactNode = null;
-  if (notice)
+  if (eyedropper)
+    topChip = <span className="inline-flex rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow">{t("color.eyedropperHint")}</span>;
+  else if (notice)
     topChip = (
       <span role="alert" className="inline-flex rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow">
         {notice}
@@ -618,8 +688,8 @@ export function Editor() {
             setError(t("upload.errorWebgl"));
           }}
           overlays={pickOverlays}
-          tapMode={!!pick}
-          onTap={pick ? onPickTap : onSmartTap}
+          tapMode={!!pick || eyedropper}
+          onTap={eyedropper ? onEyedrop : pick ? onPickTap : onSmartTap}
           markers={tool === "smart" && !pick ? session?.points : undefined}
           busy={smartBusy > 0}
           bottomBar={bottomBar}
@@ -715,7 +785,24 @@ export function Editor() {
         {selected && (
           <ColorPanel
             surface={selected}
-            onColor={(hex) => patchSurface(selected.id, { hex, lab: hex ? hexToLab(hex) : null })}
+            surfaceCount={surfaces.length}
+            tab={pickerTab}
+            onTab={setPickerTab}
+            onPick={pickPaint}
+            onCustom={pickCustom}
+            onApplyPalette={applyPalette}
+            picked={picked}
+            onPicked={setPicked}
+            eyedropper={eyedropper}
+            onEyedropper={(on) => {
+              setEyedropper(on);
+              if (on) {
+                endSession();
+                setCompare(false);
+              }
+            }}
+            photoColors={photoColors}
+            onRemoveColor={() => patchSurface(selected.id, { hex: null, lab: null, paintId: null })}
             onFinish={(finish: Finish) => patchSurface(selected.id, { finish })}
             onBrightness={(brightness) => patchSurface(selected.id, { brightness })}
             onFeather={(f) => refreshSurface(selected.id, f)}

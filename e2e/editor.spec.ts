@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { collectErrors, dist, pixel, toScreen } from "./helpers";
+import { collectErrors, dist, pickPaint, pixel, toScreen } from "./helpers";
 
 const SAMPLE = path.join(process.cwd(), "public", "samples", "room.jpg");
 
@@ -68,7 +68,7 @@ test("upload → paint wall → change color → compare → undo → download",
   else await page.getByLabel("Brush size").fill("90");
   await paintBackWall(page, !!isMobile);
 
-  // Default color of the first surface is a sage green (#8E9F88).
+  // Default paint of the first surface is RAL 6021 Pale green.
   await expect.poll(async () => dist(await pixel(page, 700, 450), wallBefore)).toBeGreaterThan(20);
   const sage = await pixel(page, 700, 450);
   expect(sage[1]).toBeGreaterThan(sage[2]); // greenish
@@ -77,7 +77,7 @@ test("upload → paint wall → change color → compare → undo → download",
   await expect(page.getByTestId("surface-list")).toContainText("% of image");
 
   // Change to a dark navy paint: wall gets dark but keeps lighting variation.
-  await page.locator('[data-hex="#1E2733"]').click();
+  await pickPaint(page, "RAL 5004"); // Black blue
   await expect.poll(async () => (await pixel(page, 700, 450)).reduce((a, b) => a + b, 0)).toBeLessThan(200);
   const lit = await pixel(page, 700, 450); // near the sunlit patch
   const dark = await pixel(page, 990, 590); // darker corner

@@ -56,3 +56,22 @@ export async function coverageOf(page: Page, index = 0): Promise<number> {
 export async function waitForAi(page: Page) {
   await page.getByTestId("ai-status").and(page.locator('[data-phase="ready"]')).waitFor({ timeout: 120_000 });
 }
+
+/** Choose a paint from the colour chart by its code (e.g. "RAL 5004" or "S 1050-Y90R"). */
+export async function pickPaint(page: Page, code: string) {
+  await page.getByTestId("tab-catalog").click();
+  await page.getByTestId(code.startsWith("RAL") ? "scope-ral-classic" : "scope-ncs").click();
+  await page.getByTestId("color-search").fill(code);
+  await page.locator(`[data-testid="catalog-grid"] [data-code="${code}"]`).first().click();
+}
+
+/** Select a polygon (image coordinates) on the current surface with the lasso. */
+export async function lassoSelect(page: Page, points: readonly (readonly [number, number])[]) {
+  await page.getByTestId("tool-lasso").click();
+  for (const [x, y] of points) {
+    const p = await toScreen(page, x, y);
+    await page.mouse.click(p.x, p.y);
+  }
+  const first = await toScreen(page, points[0]![0], points[0]![1]);
+  await page.mouse.click(first.x, first.y); // tapping the first point closes the shape
+}

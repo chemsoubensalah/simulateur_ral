@@ -1,6 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n/client";
+import { getColor } from "@/lib/color/catalog";
 import type { Surface } from "./types";
 import { EyeIcon, EyeOffIcon, PlusIcon, TrashIcon } from "./icons";
 
@@ -57,7 +58,7 @@ export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename,
                   className="w-full rounded-md bg-transparent px-1 text-sm font-medium focus:bg-white"
                 />
                 <p className="px-1 text-xs text-muted">
-                  {s.hex ?? t("surfaces.noColor")} · {t("surfaces.coverage", { pct: formatNumber(s.coverage * 100, { maximumFractionDigits: 1 }) })}
+                  <span dir="ltr">{(s.paintId && getColor(s.paintId)?.code) ?? s.hex ?? t("surfaces.noColor")}</span> · {t("surfaces.coverage", { pct: formatNumber(s.coverage * 100, { maximumFractionDigits: 1 }) })}
                 </p>
               </div>
               <button

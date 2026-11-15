@@ -7,6 +7,8 @@ export type Surface = {
   id: string;
   name: string;
   hex: string | null;
+  /** Catalogue paint id (e.g. "ral-classic:RAL 9010"), or null for a custom colour. */
+  paintId: string | null;
   lab: Lab | null;
   finish: Finish;
   /** Exposure multiplier for the recolor (1 = mean-lightness match). */
