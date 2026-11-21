@@ -28,7 +28,9 @@ export function defaultRefineOptions(w: number, h: number, band?: number): Refin
   // A few px around the mask edge: enough to fix SAM's 8 px staircase. Thin
   // structures inside the band (window trim) are still usable as background
   // samples because they differ in colour from the surface.
-  const b = band ?? Math.max(2, Math.round(4 * scale));
+  // SAM's masks come from a 256 px grid, so their boundary can be off by about
+  // one grid cell (image size / 256): the band must cover that.
+  const b = band ?? Math.max(2, Math.round((1.25 * Math.max(w, h)) / 256));
   return {
     band: b,
     // The colour window must reach confident pixels beyond the band on both sides.
@@ -115,6 +117,38 @@ export function refineMask(
   const lo = opts.minContrast;
   const hi = opts.minContrast * 3;
   const lo2x = (2 * lo) * (2 * lo);
+
+  // Local surface colour F: mean of clean, confident-inside pixels within ~R,
+  // computed on a coarse grid of cells (fast and memory-light at 2048 px).
+  const cell = Math.max(4, Math.round(R / 2));
+  const gw = Math.ceil(w / cell);
+  const gh = Math.ceil(h / cell);
+  const gsum = new Float64Array(gw * gh * 4);
+  for (let y = 0; y < h; y++) {
+    const gy = Math.floor(y / cell) * gw;
+    for (let x = 0; x < w; x++) {
+      const j = y * w + x;
+      if (band[j] || mask[j]! < opts.inside || edges[j]! > EDGE_THRESHOLD) continue;
+      const gi = (gy + Math.floor(x / cell)) * 4;
+      gsum[gi] = gsum[gi]! + rgba[j * 4]!;
+      gsum[gi + 1] = gsum[gi + 1]! + rgba[j * 4 + 1]!;
+      gsum[gi + 2] = gsum[gi + 2]! + rgba[j * 4 + 2]!;
+      gsum[gi + 3] = gsum[gi + 3]! + 1;
+    }
+  }
+  const cr2 = Math.ceil(R / cell);
+
+  // Sample offsets for background candidates: dense close to the pixel (so a
+  // thin window trim is always seen), sparse further out.
+  const DENSE = 5;
+  const stride = Math.max(1, Math.floor(R / 6));
+  const offsets: number[] = [];
+  for (let dy = -R; dy <= R; dy++)
+    for (let dx = -R; dx <= R; dx++) {
+      const near = Math.abs(dx) <= DENSE && Math.abs(dy) <= DENSE;
+      if (near || (dx % stride === 0 && dy % stride === 0)) offsets.push(dx, dy);
+    }
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
@@ -127,15 +161,13 @@ export function refineMask(
         }
       cr /= cn; cg /= cn; cb /= cn;
 
-      const y0 = Math.max(0, y - R), y1 = Math.min(h - 1, y + R);
-      const x0 = Math.max(0, x - R), x1 = Math.min(w - 1, x + R);
+      const gx = Math.floor(x / cell);
+      const gy = Math.floor(y / cell);
       let fr = 0, fg = 0, fb = 0, fn = 0;
-      for (let yy = y0; yy <= y1; yy++)
-        for (let xx = x0; xx <= x1; xx++) {
-          const j = yy * w + xx;
-          if (band[j] || mask[j]! < opts.inside || edges[j]! > EDGE_THRESHOLD) continue;
-          const k = j * 4;
-          fr += rgba[k]!; fg += rgba[k + 1]!; fb += rgba[k + 2]!; fn++;
+      for (let yy = Math.max(0, gy - cr2); yy <= Math.min(gh - 1, gy + cr2); yy++)
+        for (let xx = Math.max(0, gx - cr2); xx <= Math.min(gw - 1, gx + cr2); xx++) {
+          const gi = (yy * gw + xx) * 4;
+          fr += gsum[gi]!; fg += gsum[gi + 1]!; fb += gsum[gi + 2]!; fn += gsum[gi + 3]!;
         }
       if (fn === 0) continue;
       fr /= fn; fg /= fn; fb /= fn;
@@ -143,24 +175,26 @@ export function refineMask(
       // Top-3 background candidates closest to the pixel colour.
       let d0 = Infinity, d1 = Infinity, d2b = Infinity;
       let j0 = -1, j1 = -1, j2 = -1;
-      for (let yy = y0; yy <= y1; yy++)
-        for (let xx = x0; xx <= x1; xx++) {
-          const j = yy * w + xx;
-          const v = mask[j]!;
-          const k = j * 4;
-          const r = rgba[k]!, g = rgba[k + 1]!, b2 = rgba[k + 2]!;
-          if (v >= opts.inside && !band[j]) continue;
-          if (edges[j]! > EDGE_THRESHOLD) continue; // mixed pixel at an edge: not a clean sample
-          if (band[j] || v > opts.outside) {
-            // Uncertain pixel: only a candidate if it clearly differs from the surface.
-            const df = (r - fr) * (r - fr) + (g - fg) * (g - fg) + (b2 - fb) * (b2 - fb);
-            if (df < lo2x) continue;
-          }
-          const d = (r - cr) * (r - cr) + (g - cg) * (g - cg) + (b2 - cb) * (b2 - cb);
-          if (d < d0) { d2b = d1; j2 = j1; d1 = d0; j1 = j0; d0 = d; j0 = j; }
-          else if (d < d1) { d2b = d1; j2 = j1; d1 = d; j1 = j; }
-          else if (d < d2b) { d2b = d; j2 = j; }
+      for (let o = 0; o < offsets.length; o += 2) {
+        const xx = x + offsets[o]!;
+        const yy = y + offsets[o + 1]!;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const j = yy * w + xx;
+        const v = mask[j]!;
+        if (v >= opts.inside && !band[j]) continue;
+        if (edges[j]! > EDGE_THRESHOLD) continue; // mixed pixel at an edge: not a clean sample
+        const k = j * 4;
+        const r = rgba[k]!, g = rgba[k + 1]!, b2 = rgba[k + 2]!;
+        if (band[j] || v > opts.outside) {
+          // Uncertain pixel: only a candidate if it clearly differs from the surface.
+          const df = (r - fr) * (r - fr) + (g - fg) * (g - fg) + (b2 - fb) * (b2 - fb);
+          if (df < lo2x) continue;
         }
+        const d = (r - cr) * (r - cr) + (g - cg) * (g - cg) + (b2 - cb) * (b2 - cb);
+        if (d < d0) { d2b = d1; j2 = j1; d1 = d0; j1 = j0; d0 = d; j0 = j; }
+        else if (d < d1) { d2b = d1; j2 = j1; d1 = d; j1 = j; }
+        else if (d < d2b) { d2b = d; j2 = j; }
+      }
       if (j0 < 0) continue;
       let br = 0, bg = 0, bb = 0, bn = 0;
       for (const j of [j0, j1, j2]) {

@@ -325,3 +325,108 @@ export function chooseHypothesis(
   });
   return bestIou >= 0.5 ? pick : best;
 }
+
+/**
+ * Decisive clean-up of one 256×256 logit map (SAM's "remove small regions"
+ * step, extended). Where SAM is unsure, logits hover around 0 and a soft
+ * conversion would produce semi-transparent, blotchy squares on the wall.
+ * We instead decide every low-res pixel:
+ *  1. binarise at 0, then two 3×3 majority passes remove checkerboard noise;
+ *  2. enclosed holes smaller than `holeFrac` of the mask are filled;
+ *  3. islands not containing a seed and smaller than `islandFrac` are removed;
+ * and return logits pushed to at least ±`margin` on the decided side, so that
+ * upsampling gives a smooth, crisp boundary. Returns a copy (offset 0).
+ */
+export function cleanLogits(
+  logits: Float32Array,
+  offset: number,
+  g: EncoderGeometry,
+  seeds: { x: number; y: number }[],
+  opts: { holeFrac?: number; islandFrac?: number; margin?: number } = {},
+): Float32Array {
+  const holeFrac = opts.holeFrac ?? 0.02;
+  const islandFrac = opts.islandFrac ?? 0.03;
+  const margin = opts.margin ?? 2;
+  const { w, h } = validLowRes(g);
+  const W = Math.ceil(w);
+  const H = Math.ceil(h);
+  const src = logits.subarray(offset, offset + LOW_RES * LOW_RES);
+  let bin = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) bin[y * W + x] = src[y * LOW_RES + x]! > 0 ? 1 : 0;
+
+  // 1. majority filter (twice)
+  for (let pass = 0; pass < 2; pass++) {
+    const next = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        let s = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+            s += bin[yy * W + xx]!;
+            n++;
+          }
+        next[y * W + x] = s * 2 > n ? 1 : s * 2 < n ? 0 : bin[y * W + x]!;
+      }
+    bin = next;
+  }
+
+  // Connected components of value `v` (4-connectivity).
+  const components = (v: number) => {
+    const label = new Int32Array(W * H).fill(-1);
+    const comps: { size: number; border: boolean; pixels: number[] }[] = [];
+    const queue = new Int32Array(W * H);
+    for (let i = 0; i < W * H; i++) {
+      if (bin[i] !== v || label[i] !== -1) continue;
+      const id = comps.length;
+      const pixels: number[] = [];
+      let border = false;
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = i;
+      label[i] = id;
+      while (head < tail) {
+        const j = queue[head++]!;
+        pixels.push(j);
+        const x = j % W;
+        const y = (j - x) / W;
+        if (x === 0 || y === 0 || x === W - 1 || y === H - 1) border = true;
+        for (const k of [x > 0 ? j - 1 : -1, x < W - 1 ? j + 1 : -1, y > 0 ? j - W : -1, y < H - 1 ? j + W : -1]) {
+          if (k < 0 || label[k] !== -1 || bin[k] !== v) continue;
+          label[k] = id;
+          queue[tail++] = k;
+        }
+      }
+      comps.push({ size: pixels.length, border, pixels });
+    }
+    return { label, comps };
+  };
+
+  let area = 0;
+  for (let i = 0; i < W * H; i++) area += bin[i]!;
+  // 2. fill small enclosed holes
+  for (const c of components(0).comps) if (!c.border && c.size < holeFrac * area) for (const p of c.pixels) bin[p] = 1;
+  // 3. remove small islands without a seed
+  const { label, comps } = components(1);
+  const keep = comps.map((c) => c.size >= islandFrac * area);
+  for (const s of seeds) {
+    const x = Math.min(W - 1, Math.max(0, Math.floor(s.x / 4)));
+    const y = Math.min(H - 1, Math.max(0, Math.floor(s.y / 4)));
+    const id = label[y * W + x]!;
+    if (id >= 0) keep[id] = true;
+  }
+  comps.forEach((c, id) => {
+    if (!keep[id]) for (const p of c.pixels) bin[p] = 0;
+  });
+
+  const out = new Float32Array(LOW_RES * LOW_RES).fill(-20);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const v = src[y * LOW_RES + x]!;
+      out[y * LOW_RES + x] = bin[y * W + x] ? Math.max(v, margin) : Math.min(v, -margin);
+    }
+  return out;
+}

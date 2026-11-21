@@ -19,7 +19,7 @@ import {
   LOW_RES,
   lowResBinary,
   lowResStats,
-  removeSpecks,
+  cleanLogits,
   selectCandidates,
   toModelPoints,
   upsampleLogits,
@@ -215,7 +215,7 @@ async function runDecoder(prompts: Point[][]): Promise<{ logits: Float32Array; s
 
 function finishMask(logits: Float32Array, offset: number, seeds: { x: number; y: number }[]): Uint8Array {
   if (!emb || !image) throw new Error("Not ready");
-  const clean = removeSpecks(logits, offset, emb.geometry, seeds);
+  const clean = cleanLogits(logits, offset, emb.geometry, seeds);
   const coarse = upsampleLogits(clean, 0, emb.geometry, image.width, image.height);
   return refineMask(coarse, image.rgba, image.width, image.height, undefined, image.edges);
 }
@@ -235,6 +235,8 @@ async function decode(id: number, points: Point[], variant: number | null) {
 
   let chosen: number;
   let usedSurfaces = false;
+  /** A clean surface from the background analysis to use instead of an unstable tap mask. */
+  let surface: KeptCandidate | null = null;
   if (variant !== null && variant >= 0 && variant < 3) {
     chosen = variant;
     usedSurfaces = true; // explicit user choice: nothing to re-evaluate
@@ -243,12 +245,21 @@ async function decode(id: number, points: Point[], variant: number | null) {
     const mp = toModelPoints(positives, image.width, image.height, g);
     const { w } = validLowRes(g);
     const idx = Math.floor(mp[1]! / 4) * Math.floor(w) + Math.floor(mp[0]! / 4);
-    chosen = chooseHypothesis(hyps, candidates.filter((c) => c.bin[idx] === 1).map((c) => c.bin));
+    const containing = candidates.filter((c) => c.bin[idx] === 1);
+    chosen = chooseHypothesis(hyps, containing.map((c) => c.bin));
+    if (containing.length) {
+      // On real photos the tap's own mask can be unstable (blotchy) where the
+      // analysed surface is clean: prefer the surface unless the tap mask is
+      // both stable and essentially the same region.
+      const target = containing.reduce((a, b) => (binaryArea(b.bin) < binaryArea(a.bin) ? b : a));
+      const h = hyps[chosen]!;
+      if (!(h.stability >= 0.75 && iou(h.bin, target.bin) >= 0.85)) surface = target;
+    }
   } else chosen = chooseHypothesis(hyps, []);
 
   const seedsModel = toModelPoints(positives, image.width, image.height, g);
   const seeds = positives.map((_, i) => ({ x: seedsModel[2 * i]!, y: seedsModel[2 * i + 1]! }));
-  const mask = finishMask(logits, chosen * MASK_SIZE, seeds);
+  const mask = surface ? finishMask(surface.logits, 0, [surface.seed, ...seeds]) : finishMask(logits, chosen * MASK_SIZE, seeds);
   const total = hyps[0]!.bin.length;
   // Offer only visibly different alternatives for "Smaller / Larger" (SAM often
   // returns two near-identical masks).
@@ -309,7 +320,7 @@ function sendCandidates(id: number) {
   const pw = Math.round(image.width * scale);
   const ph = Math.round(image.height * scale);
   const list: CandidatePreview[] = candidates.map((c) => {
-    const clean = removeSpecks(c.logits, 0, emb!.geometry, [c.seed]);
+    const clean = cleanLogits(c.logits, 0, emb!.geometry, [c.seed]);
     return { id: c.id, area: c.area, score: c.score, preview: upsampleLogits(clean, 0, emb!.geometry, pw, ph) };
   });
   post(

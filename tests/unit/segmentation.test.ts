@@ -9,6 +9,7 @@ import {
   lowResBinary,
   lowResStats,
   removeSpecks,
+  cleanLogits,
   selectCandidates,
   toModelPoints,
   upsampleLogits,
@@ -74,6 +75,31 @@ describe("SAM post-processing", () => {
     // A seed inside the speck keeps it (user tapped there).
     const kept = removeSpecks(l, 0, G, [{ x: 201 * 4, y: 151 * 4 }]);
     expect(binaryArea(lowResBinary(kept, 0, G).data)).toBe(100 * 100 + 9);
+  });
+
+  it("cleanLogits resolves uncertain checkerboard regions decisively", () => {
+    // Solid mask on the left; a noisy ±0.3 checkerboard region on the right (SAM unsure).
+    const l = rectLogits(0, 0, 100, 192);
+    for (let y = 20; y < 120; y++) for (let x = 100; x < 160; x++) l[y * LOW_RES + x] = (x + y) % 2 ? 0.3 : -0.3;
+    const c = cleanLogits(l, 0, G, []);
+    let uncertain = 0;
+    for (let y = 0; y < 192; y++) for (let x = 0; x < 256; x++) if (Math.abs(c[y * LOW_RES + x]!) < 2) uncertain++;
+    expect(uncertain).toBe(0); // every cell decided: no semi-transparent blotches
+    const up = upsampleLogits(c, 0, G, 1600, 1200);
+    let partial = 0;
+    for (let i = 0; i < up.length; i += 7) if (up[i]! > 10 && up[i]! < 245) partial++;
+    expect(partial / (up.length / 7)).toBeLessThan(0.01);
+  });
+
+  it("cleanLogits fills small holes and drops small islands, keeping seeded ones", () => {
+    const l = rectLogits(10, 10, 110, 110);
+    for (let y = 50; y < 54; y++) for (let x = 50; x < 54; x++) l[y * LOW_RES + x] = -5; // 16 px hole
+    for (let y = 150; y < 153; y++) for (let x = 200; x < 203; x++) l[y * LOW_RES + x] = 5; // 9 px island
+    const c = cleanLogits(l, 0, G, []);
+    expect(c[52 * LOW_RES + 52]).toBeGreaterThan(0);
+    expect(c[151 * LOW_RES + 201]).toBeLessThan(0);
+    const seeded = cleanLogits(l, 0, G, [{ x: 201 * 4, y: 151 * 4 }]);
+    expect(seeded[151 * LOW_RES + 201]).toBeGreaterThan(0);
   });
 
   it("chooses the hypothesis matching the surface under the tap", () => {
