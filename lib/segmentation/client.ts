@@ -108,6 +108,20 @@ export class SegmentationClient {
   surfacesReady = false;
   status: SegStatus = { phase: "idle" };
 
+  /** Resolves when surface analysis is available, or after `timeoutMs` (whichever first). */
+  waitForSurfaces(timeoutMs: number): Promise<void> {
+    if (this.surfacesReady) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        off();
+        resolve();
+      };
+      const timer = setTimeout(done, timeoutMs);
+      const off = this.onSurfacesReady(done);
+    });
+  }
+
   /** Called once automatic surface analysis is available (taps can then be re-evaluated). */
   onSurfacesReady(fn: () => void): () => void {
     this.surfaceListeners.add(fn);

@@ -424,6 +424,10 @@ export function Editor() {
       pendingDecode.current = false;
       setSmartBusy((n) => n + 1);
       try {
+        // A first tap right after the photo is analysed waits (spinner) for the
+        // surface analysis, so it selects the whole wall instead of a fragment.
+        if (variant === null && s.points.length === 1) await client.waitForSurfaces(15_000);
+        if (sessionRef.current !== s) return;
         const res = await client.decode(s.points, variant);
         if (!res || sessionRef.current !== s) return;
         applySmartMask(s, res.mask);
