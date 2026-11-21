@@ -7,9 +7,9 @@ import { computeLightness, surfaceStats, type SurfaceStats } from "@/lib/recolor
  * for React state: pixel luminance, raw masks, feathered masks and history.
  */
 export class EditorDocument {
-  /** CIE L* of every pixel of the original photo. */
-  readonly lightness: Float32Array;
-  readonly history = new MaskHistory();
+  /** CIE L* of every pixel of the original photo, stored as round(L* × 2.55) to save memory. */
+  readonly lightness: Uint8Array;
+  readonly history: MaskHistory;
   private raw = new Map<string, Uint8Array>();
   private display = new Map<string, Uint8Array>();
 
@@ -17,8 +17,18 @@ export class EditorDocument {
     readonly width: number,
     readonly height: number,
     pixels: Uint8ClampedArray,
+    /** Undo budget; smaller on phones. */
+    historyBytes = 48 * 1024 * 1024,
   ) {
-    this.lightness = computeLightness(pixels);
+    const L = computeLightness(pixels);
+    this.lightness = new Uint8Array(L.length);
+    for (let i = 0; i < L.length; i++) this.lightness[i] = Math.round(L[i]! * 2.55);
+    this.history = new MaskHistory(historyBytes);
+  }
+
+  /** Lightness statistics of the photo under a mask. */
+  stats(mask: Uint8Array) {
+    return surfaceStats(this.lightness, mask, 1 / 2.55);
   }
 
   createMask(id: string): Uint8Array {
@@ -52,7 +62,7 @@ export class EditorDocument {
     if (!raw) throw new Error(`Unknown surface ${id}`);
     const shown = feather > 0 ? featherMask(raw, this.width, this.height, feather) : raw;
     this.display.set(id, shown);
-    return { stats: surfaceStats(this.lightness, shown), coverage: maskCoverage(shown), mask: shown };
+    return { stats: this.stats(shown), coverage: maskCoverage(shown), mask: shown };
   }
 
   undo(): MaskPatch | null {

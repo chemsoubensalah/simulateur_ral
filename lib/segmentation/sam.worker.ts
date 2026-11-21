@@ -363,7 +363,22 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
           const ms = await encode();
           if (gen !== generation) return;
           post({ type: "embedded", id: msg.id, ms });
-          startCandidates(gen);
+          if (msg.analyze !== false) startCandidates(gen);
+        }),
+      );
+      break;
+    }
+    case "exportEmbeddings": {
+      enqueue(
+        PRIORITY.setup,
+        withId(msg.id, () => {
+          if (!emb) throw new Error("No embeddings");
+          const imageEmbeddings = (emb.image.data as Float32Array).slice();
+          const positionalEmbeddings = (emb.positional.data as Float32Array).slice();
+          post(
+            { type: "embeddings", id: msg.id, embeddings: { geometry: emb.geometry, dims: [...emb.image.dims], imageEmbeddings, positionalEmbeddings } },
+            [imageEmbeddings.buffer as ArrayBuffer, positionalEmbeddings.buffer as ArrayBuffer],
+          );
         }),
       );
       break;

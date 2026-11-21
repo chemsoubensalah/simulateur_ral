@@ -8,7 +8,7 @@ const DB_NAME = "colorvision-models";
 const STORE = "files";
 const VERSION = 1;
 
-type Entry = { body: ArrayBuffer; contentType: string | null; storedAt: number };
+export type Entry = { body: ArrayBuffer; contentType: string | null; storedAt: number };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -51,6 +51,14 @@ export async function idbPut(key: string, body: ArrayBuffer, contentType: string
     await tx("readwrite", (s) => s.put({ body, contentType, storedAt: Date.now() } satisfies Entry, key));
   } catch {
     /* quota exceeded or private mode: continue without caching */
+  }
+}
+
+export async function idbDelete(key: string): Promise<void> {
+  try {
+    await tx("readwrite", (s) => s.delete(key));
+  } catch {
+    /* ignore */
   }
 }
 

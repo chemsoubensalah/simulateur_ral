@@ -5,12 +5,13 @@ import { useI18n } from "@/lib/i18n/client";
 import { hexToLab, rgbToHex, type Lab } from "@/lib/color/lab";
 import { getColor, type PaintColor } from "@/lib/color/catalog";
 import { dominantColors } from "@/lib/color/palettes";
+import { loadSession, saveSessionImage, saveSessionState, type SavedSession } from "@/lib/editor/autosave";
 import { EditorDocument } from "@/lib/editor/document";
 import { ImageLoadError, loadImageFile, loadImageUrl, type LoadedImage } from "@/lib/image/load";
 import { diffRect, type BrushMode, type Rect } from "@/lib/mask/ops";
 import type { Finish } from "@/lib/recolor/model";
 import type { OverlayInput } from "@/lib/recolor/renderer";
-import { SegmentationClient, type SegmentationMode, type SegStatus } from "@/lib/segmentation/client";
+import { isMobileDevice, SegmentationClient, type SegmentationMode, type SegStatus } from "@/lib/segmentation/client";
 import type { Point as PromptPoint } from "@/lib/segmentation/postprocess";
 import type { CandidatePreview, Hypothesis } from "@/lib/segmentation/protocol";
 import { Stage, type StageHandle } from "./Stage";
@@ -78,7 +79,7 @@ export function Editor() {
   const [showMask, setShowMask] = useState(false);
   const [compare, setCompare] = useState(false);
   const [comparePos, setComparePos] = useState(50);
-  const [, setHistoryTick] = useState(0);
+  const [historyTick, setHistoryTick] = useState(0);
   const [renderMs, setRenderMs] = useState<number | null>(null);
 
   // AI segmentation
@@ -128,19 +129,57 @@ export function Editor() {
 
   /* ---------- loading ---------- */
 
+  /** Resolves once the current photo is stored for autosave (state is written after it). */
+  const imageSaved = useRef<Promise<void>>(Promise.resolve());
+
   const openImage = useCallback(
-    async (load: () => Promise<LoadedImage>) => {
+    async (load: () => Promise<LoadedImage>, restore: SavedSession | null = null) => {
       setBusy(true);
       setError(null);
       try {
         const img = await load();
-        const d = new EditorDocument(img.width, img.height, img.pixels);
+        const d = new EditorDocument(img.width, img.height, img.pixels, isMobileDevice() ? 20 * 1024 * 1024 : 48 * 1024 * 1024);
         surfaceCount.current = 0;
-        const first = makeSurface(d);
+        let list: Surface[];
+        let selected: string;
+        if (restore && restore.width === img.width && restore.height === img.height && restore.surfaces.length) {
+          // Continue a saved session: surfaces, colours and masks.
+          list = restore.surfaces.map((s) => {
+            d.createMask(s.id).set(s.mask);
+            const { stats, coverage } = d.refresh(s.id, s.feather);
+            const paint = s.paintId ? getColor(s.paintId) : undefined;
+            return {
+              id: s.id,
+              name: s.name,
+              hex: s.hex,
+              paintId: s.paintId,
+              lab: paint?.lab ?? (s.hex ? hexToLab(s.hex) : null),
+              finish: s.finish,
+              brightness: s.brightness,
+              feather: s.feather,
+              visible: s.visible,
+              stats,
+              coverage,
+            };
+          });
+          surfaceCount.current = list.length;
+          selected = list.some((s) => s.id === restore.selectedId) ? restore.selectedId! : list[0]!.id;
+          imageSaved.current = Promise.resolve();
+        } else {
+          const first = makeSurface(d);
+          list = [first];
+          selected = first.id;
+          // Keep the photo on the device so the work survives a reload.
+          imageSaved.current = new Promise<Blob | null>((r) => img.canvas.toBlob(r, "image/jpeg", 0.9))
+            .then((b) => (b ? saveSessionImage(b) : undefined))
+            .catch(() => undefined);
+        }
         setDoc(d);
         setImage(img);
-        setSurfaces([first]);
-        setSelectedId(first.id);
+        setSurfaces(list);
+        setSelectedId(selected);
+        // "Back" (button or edge swipe) returns to the upload screen instead of leaving the editor.
+        if (!window.history.state?.cvPhoto) window.history.pushState({ ...window.history.state, cvPhoto: true }, "");
         setTool("smart");
         setPick(null);
         sessionRef.current = null;
@@ -156,6 +195,71 @@ export function Editor() {
     },
     [makeSurface, t],
   );
+
+  /* ---------- autosave & navigation ---------- */
+
+  const closePhoto = useCallback(() => {
+    setImage(null);
+    setDoc(null);
+    setSurfaces([]);
+    setPick(null);
+    setEyedropper(false);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => {
+      if (!window.history.state?.cvPhoto) closePhoto();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [closePhoto]);
+
+  // Save the session shortly after every change.
+  useEffect(() => {
+    if (!doc || !image) return;
+    const timer = setTimeout(() => {
+      const state: SavedSession = {
+        savedAt: Date.now(),
+        width: doc.width,
+        height: doc.height,
+        selectedId,
+        surfaces: surfacesRef.current
+          .map((s) => ({ s, mask: doc.rawMask(s.id) }))
+          .filter((x): x is { s: Surface; mask: Uint8Array } => !!x.mask)
+          .map(({ s, mask }) => ({
+            id: s.id,
+            name: s.name,
+            hex: s.hex,
+            paintId: s.paintId,
+            finish: s.finish,
+            brightness: s.brightness,
+            feather: s.feather,
+            visible: s.visible,
+            mask,
+          })),
+      };
+      void imageSaved.current.then(() => saveSessionState(state)).catch(() => undefined);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [doc, image, surfaces, selectedId, historyTick]);
+
+  // Offer to continue the last session on the upload screen.
+  const [resume, setResume] = useState<{ url: string; savedAt: number; image: Blob; state: SavedSession | null } | null>(null);
+  useEffect(() => {
+    if (image) return;
+    let url: string | null = null;
+    let cancelled = false;
+    void loadSession().then((s) => {
+      if (cancelled || !s) return;
+      url = URL.createObjectURL(s.image);
+      setResume({ url, savedAt: s.savedAt, image: s.image, state: s.state });
+    });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+      setResume(null);
+    };
+  }, [image]);
 
   /* ---------- surface updates ---------- */
 
@@ -572,6 +676,18 @@ export function Editor() {
       <UploadPanel
         busy={busy}
         error={error}
+        resume={
+          resume
+            ? {
+                thumbUrl: resume.url,
+                savedAt: resume.savedAt,
+                onResume: () => {
+                  const r = resume;
+                  void openImage(() => loadImageFile(r.image), r.state);
+                },
+              }
+            : null
+        }
         onFile={(f) => openImage(() => loadImageFile(f))}
         onSample={(src) => openImage(() => loadImageUrl(src))}
       />
@@ -702,9 +818,8 @@ export function Editor() {
           <button
             type="button"
             onClick={() => {
-              setImage(null);
-              setDoc(null);
-              setSurfaces([]);
+              if (window.history.state?.cvPhoto) window.history.back();
+              else closePhoto();
             }}
             className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-medium hover:bg-black/5"
           >

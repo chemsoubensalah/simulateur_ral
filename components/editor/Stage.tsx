@@ -6,7 +6,7 @@ import type { EditorDocument } from "@/lib/editor/document";
 import type { LoadedImage } from "@/lib/image/load";
 import { emptyRect, mergeCoverage, strokeSegment, unionRect, type BrushMode, type Rect } from "@/lib/mask/ops";
 import { rasterizePolygon, type Point } from "@/lib/mask/polygon";
-import { surfaceStats, type SurfaceStats } from "@/lib/recolor/model";
+import type { SurfaceStats } from "@/lib/recolor/model";
 import { useI18n } from "@/lib/i18n/client";
 import type { Surface, Tool, ViewTransform } from "./types";
 import { FitIcon, MinusIcon, PlusIcon } from "./icons";
@@ -139,12 +139,6 @@ export function Stage(props: Props) {
     }
     rendererRef.current = r;
     renderCount.current = 0;
-    const orig = origCanvasRef.current;
-    if (orig) {
-      orig.width = image.width;
-      orig.height = image.height;
-      orig.getContext("2d")?.drawImage(image.canvas, 0, 0);
-    }
     requestRender();
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -157,6 +151,21 @@ export function Stage(props: Props) {
   useEffect(() => {
     requestRender();
   }, [surfaces, selectedId, showMask, compare, props.overlays, props.tapMode, requestRender]);
+
+  // The untouched photo is only needed for the before/after slider: create it
+  // on demand and release it afterwards (saves ~12 MB plus GPU memory on phones).
+  useEffect(() => {
+    const orig = origCanvasRef.current;
+    if (!orig) return;
+    if (compare) {
+      orig.width = image.width;
+      orig.height = image.height;
+      orig.getContext("2d")?.drawImage(image.canvas, 0, 0);
+    } else {
+      orig.width = 0;
+      orig.height = 0;
+    }
+  }, [compare, image]);
 
   useImperativeHandle(
     props.ref,
@@ -278,7 +287,7 @@ export function Stage(props: Props) {
       if (!force && cur && cur.id === id && now - cur.at < 120) return;
       const m = doc.rawMask(id);
       if (!m) return;
-      liveMean.current = { id, stats: surfaceStats(doc.lightness, m), at: now };
+      liveMean.current = { id, stats: doc.stats(m), at: now };
     },
     [doc],
   );

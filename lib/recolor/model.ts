@@ -177,7 +177,7 @@ export function maskedMean(values: Float32Array, mask: Uint8Array): number | nul
  * Mean and 95th-percentile L* of the pixels under a mask (alpha-weighted),
  * via a 0.25-L* histogram. Returns null for an empty mask.
  */
-export function surfaceStats(lightness: Float32Array, mask: Uint8Array): SurfaceStats | null {
+export function surfaceStats(lightness: ArrayLike<number>, mask: Uint8Array, scale = 1): SurfaceStats | null {
   const BINS = 401;
   const hist = new Float64Array(BINS);
   let sum = 0;
@@ -185,7 +185,7 @@ export function surfaceStats(lightness: Float32Array, mask: Uint8Array): Surface
   for (let i = 0; i < mask.length; i++) {
     const w = mask[i] ?? 0;
     if (w === 0) continue;
-    const L = lightness[i] ?? 0;
+    const L = (lightness[i] ?? 0) * scale;
     sum += L * w;
     wsum += w;
     hist[Math.min(BINS - 1, Math.max(0, Math.round(L * 4)))]! += w;

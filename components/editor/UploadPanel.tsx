@@ -12,14 +12,16 @@ export const SAMPLES = [
 type Props = {
   busy: boolean;
   error: string | null;
+  /** A saved session that can be continued (shown above the upload area). */
+  resume?: { thumbUrl: string; savedAt: number; onResume: () => void } | null;
   onFile: (file: File) => void;
   onSample: (src: string) => void;
 };
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
 
-export function UploadPanel({ busy, error, onFile, onSample }: Props) {
-  const { t } = useI18n();
+export function UploadPanel({ busy, error, resume, onFile, onSample }: Props) {
+  const { t, locale } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -33,6 +35,27 @@ export function UploadPanel({ busy, error, onFile, onSample }: Props) {
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-8" aria-labelledby="upload-title">
+      {resume && !busy && (
+        <div className="mb-6 flex items-center gap-4 rounded-3xl border-2 border-brand-500 bg-brand-50 p-4" data-testid="resume">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={resume.thumbUrl} alt="" className="h-20 w-28 shrink-0 rounded-xl object-cover" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">{t("upload.resumeTitle")}</p>
+            <p className="text-sm text-muted">
+              {t("upload.resumeText")} ·{" "}
+              {new Intl.DateTimeFormat(locale === "ar" ? "ar-u-nu-latn" : locale, { dateStyle: "short", timeStyle: "short" }).format(resume.savedAt)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={resume.onResume}
+            data-testid="resume-button"
+            className="min-h-12 shrink-0 rounded-full bg-brand-600 px-5 font-semibold text-white hover:bg-brand-700"
+          >
+            {t("upload.resume")}
+          </button>
+        </div>
+      )}
       <div
         onDragOver={(e) => {
           e.preventDefault();

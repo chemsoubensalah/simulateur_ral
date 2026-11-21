@@ -98,3 +98,26 @@ test("ideas: harmony palette and photo colours; apply palette to two surfaces", 
   for (const s of ["modern", "scandinavian", "mediterranean", "classic", "moroccan"]) await expect(page.getByTestId(`style-${s}`).locator("[data-code]")).toHaveCount(5);
   expect(errors).toEqual([]);
 });
+
+test("work is saved: after a reload or going back, 'Continue' restores walls and colours", async ({ page }) => {
+  const errors = collectErrors(page);
+  await openRoomWithWall(page, "/en/editor");
+  await pickPaint(page, "RAL 5004");
+  await expect(page.getByTestId("current-code")).toHaveText("RAL 5004");
+  const painted = await pixel(page, 700, 450);
+  await page.waitForTimeout(2500); // autosave is debounced
+
+  // Simulates the browser reloading the page (e.g. a phone running low on memory).
+  await page.reload();
+  await expect(page.getByTestId("resume")).toBeVisible();
+  await page.getByTestId("resume-button").click();
+  await expect(page.getByTestId("current-code")).toHaveText("RAL 5004");
+  await expect(page.getByTestId("surface-list")).toContainText("RAL 5004");
+  await expect.poll(async () => dist(await pixel(page, 700, 450), painted)).toBeLessThan(12);
+
+  // Back (button or edge swipe) returns to the upload screen of the editor, not the home page.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/en\/editor$/);
+  await expect(page.getByTestId("resume")).toBeVisible();
+  expect(errors).toEqual([]);
+});

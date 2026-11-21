@@ -25,7 +25,9 @@ export type Hypothesis = { index: number; score: number; area: number };
 export type WorkerRequest =
   | { type: "init"; id: number; preferWebGPU: boolean; numThreads: number }
   | { type: "setImage"; id: number; rgba: ArrayBuffer; width: number; height: number }
-  | { type: "encode"; id: number }
+  /** analyze=false skips the background surface analysis (throw-away encoder worker). */
+  | { type: "encode"; id: number; analyze?: boolean }
+  | { type: "exportEmbeddings"; id: number }
   | { type: "setEmbeddings"; id: number; embeddings: ExternalEmbeddings }
   | { type: "decode"; id: number; points: Point[]; variant: number | null }
   | { type: "candidates"; id: number }
@@ -37,6 +39,7 @@ export type WorkerResponse =
   | { type: "ready"; id: number; device: Device }
   | { type: "imageSet"; id: number }
   | { type: "embedded"; id: number; ms: number }
+  | { type: "embeddings"; id: number; embeddings: ExternalEmbeddings }
   /** usedSurfaces: whether automatic surface analysis informed the choice of hypothesis. */
   | { type: "decoded"; id: number; mask: ArrayBuffer; hypotheses: Hypothesis[]; chosen: number; usedSurfaces: boolean; ms: number }
   /** Background surface analysis finished (unsolicited). */

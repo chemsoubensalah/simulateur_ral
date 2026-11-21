@@ -52,6 +52,13 @@ function hasWebGPU(): boolean {
   return typeof navigator !== "undefined" && "gpu" in navigator;
 }
 
+/** Phones and tablets: tighter memory limits (the browser reloads the page if exceeded). */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
+}
+
 /** Heuristic for devices where on-device encoding would take too long. */
 export function isLikelySlowDevice(): boolean {
   if (hasWebGPU()) return false;
@@ -160,8 +167,9 @@ export class SegmentationClient {
     body: RequestBody,
     expect: T,
     transfer: Transferable[] = [],
+    target: Worker | null = this.worker,
   ): Promise<Extract<WorkerResponse, { type: T }>> {
-    const worker = this.worker;
+    const worker = target;
     if (!worker) return Promise.reject(new Error("Segmentation not started"));
     const id = this.nextId++;
     if (body.type === "decode") this.latestDecode = id;
@@ -174,14 +182,48 @@ export class SegmentationClient {
     });
   }
 
+  private initMessage(): RequestBody {
+    const mobile = isMobileDevice();
+    const isolated = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated;
+    const cores = Math.max(1, (navigator.hardwareConcurrency ?? 2) - 1);
+    // Phones: CPU (WASM) only and at most 2 threads, to stay within memory limits.
+    return { type: "init", preferWebGPU: !mobile, numThreads: isolated ? Math.min(mobile ? 2 : 4, cores) : 1 };
+  }
+
   private async boot(): Promise<Device> {
     this.surfacesReady = false;
+    this.encoder?.terminate();
+    this.encoder = null;
     this.worker?.terminate();
     this.failAll(new Error("restarted"));
     this.worker = this.createWorker();
-    const threads = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated ? Math.min(4, Math.max(1, (navigator.hardwareConcurrency ?? 2) - 1)) : 1;
-    const ready = await this.request({ type: "init", preferWebGPU: true, numThreads: threads }, "ready");
+    const ready = await this.request(this.initMessage(), "ready");
     return ready.device;
+  }
+
+  /** Throw-away worker that only computes the image embedding (phones). */
+  private encoder: Worker | null = null;
+
+  /**
+   * Encode in a separate worker and terminate it afterwards: the image encoder's
+   * working memory (hundreds of MB of WebAssembly memory that can never shrink)
+   * is released, so phones do not run out of memory and reload the page.
+   */
+  private async encodeIsolated(image: LoadedImage): Promise<ExternalEmbeddings> {
+    const enc = this.createWorker();
+    this.encoder = enc;
+    try {
+      await this.request(this.initMessage(), "ready", [], enc);
+      this.setStatus({ phase: "analyzing", source: "device" });
+      const rgba = image.pixels.slice().buffer as ArrayBuffer;
+      await this.request({ type: "setImage", rgba, width: image.width, height: image.height }, "imageSet", [rgba], enc);
+      await this.request({ type: "encode", analyze: false }, "embedded", [], enc);
+      const r = await this.request({ type: "exportEmbeddings" }, "embeddings", [], enc);
+      return r.embeddings;
+    } finally {
+      enc.terminate();
+      if (this.encoder === enc) this.encoder = null;
+    }
   }
 
   /** Load the model (cached after first use) and analyse the photo. */
@@ -199,16 +241,37 @@ export class SegmentationClient {
   }
 
   private async startDevice(image: LoadedImage, serverFallback: boolean) {
-    const device = await this.boot();
+    // Always encode in a throw-away worker: measured ~2 GB peak renderer memory
+    // when the encoder stays alive vs ~0.6 GB this way (phones reload the page
+    // when a tab exceeds ~1–1.5 GB).
+    return this.startDeviceIsolated(image, serverFallback);
+  }
+
+  private async startDeviceIsolated(image: LoadedImage, serverFallback: boolean) {
+    this.surfacesReady = false;
+    this.worker?.terminate();
+    this.worker = null;
+    this.failAll(new Error("restarted"));
+    // The encoder worker's download progress drives the status; it switches to
+    // "analyzing" once its model is loaded.
+    const encoded = this.encodeIsolated(image);
+    encoded.catch(() => {});
+    const timeout = new Promise<"timeout">((r) => setTimeout(() => r("timeout"), LOCAL_ENCODE_TIMEOUT_MS + 15_000));
+    const winner = serverFallback ? await Promise.race([encoded, timeout]) : await encoded;
     if (this.disposed) return;
-    this.setStatus({ phase: "analyzing", source: "device" });
+    if (winner === "timeout") {
+      this.encoder?.terminate();
+      this.encoder = null;
+      return this.startServer(image);
+    }
+    // Decoder worker: model weights only, no encoder run → small memory footprint.
+    this.worker = this.createWorker();
+    const ready = await this.request(this.initMessage(), "ready");
     const rgba = image.pixels.slice().buffer as ArrayBuffer;
     await this.request({ type: "setImage", rgba, width: image.width, height: image.height }, "imageSet", [rgba]);
-    const embedded = this.request({ type: "encode" }, "embedded");
-    const timeout = new Promise<"timeout">((r) => setTimeout(() => r("timeout"), LOCAL_ENCODE_TIMEOUT_MS));
-    const winner = serverFallback ? await Promise.race([embedded, timeout]) : await embedded;
-    if (winner === "timeout") return this.startServer(image);
-    this.setStatus({ phase: "ready", source: "device", device, encodeMs: winner.ms });
+    const t = [winner.imageEmbeddings.buffer, winner.positionalEmbeddings.buffer] as ArrayBuffer[];
+    const done = await this.request({ type: "setEmbeddings", embeddings: winner }, "embedded", t);
+    this.setStatus({ phase: "ready", source: "device", device: ready.device, encodeMs: done.ms });
   }
 
   private async startServer(image: LoadedImage) {
@@ -262,6 +325,8 @@ export class SegmentationClient {
   dispose() {
     this.disposed = true;
     this.failAll(new Error("disposed"));
+    this.encoder?.terminate();
+    this.encoder = null;
     this.worker?.terminate();
     this.worker = null;
     this.listeners.clear();
