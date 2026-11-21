@@ -334,8 +334,9 @@ export function chooseHypothesis(
  *  1. binarise at 0, then two 3×3 majority passes remove checkerboard noise;
  *  2. enclosed holes smaller than `holeFrac` of the mask are filled;
  *  3. islands not containing a seed and smaller than `islandFrac` are removed;
- * and return logits pushed to at least ±`margin` on the decided side, so that
- * upsampling gives a smooth, crisp boundary. Returns a copy (offset 0).
+ * and return logits that are at least ±`margin` on the decided side (SAM's own
+ * values are kept where they agree), so upsampling gives a smooth, crisp
+ * boundary. Returns a copy (offset 0).
  */
 export function cleanLogits(
   logits: Float32Array,
@@ -346,7 +347,7 @@ export function cleanLogits(
 ): Float32Array {
   const holeFrac = opts.holeFrac ?? 0.02;
   const islandFrac = opts.islandFrac ?? 0.03;
-  const margin = opts.margin ?? 2;
+  const margin = opts.margin ?? 0.75;
   const { w, h } = validLowRes(g);
   const W = Math.ceil(w);
   const H = Math.ceil(h);
@@ -422,11 +423,15 @@ export function cleanLogits(
     if (!keep[id]) for (const p of c.pixels) bin[p] = 0;
   });
 
+  // Keep SAM's own (smooth) logits where they already agree with the decision,
+  // so diagonal edges stay smooth after upsampling; only cells that were unsure
+  // or flipped get a fixed value.
   const out = new Float32Array(LOW_RES * LOW_RES).fill(-20);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const v = src[y * LOW_RES + x]!;
-      out[y * LOW_RES + x] = bin[y * W + x] ? Math.max(v, margin) : Math.min(v, -margin);
+      const on = bin[y * W + x] === 1;
+      out[y * LOW_RES + x] = on ? (v >= margin ? v : margin) : v <= -margin ? v : -margin;
     }
   return out;
 }

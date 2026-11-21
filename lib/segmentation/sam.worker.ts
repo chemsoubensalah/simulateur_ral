@@ -28,7 +28,7 @@ import {
   type Point,
   type RawCandidate,
 } from "./postprocess";
-import { defaultRefineOptions, edgeMap, refineMask } from "@/lib/mask/refine";
+import { defaultRefineOptions, edgeMap, growMask, refineMask } from "@/lib/mask/refine";
 import { SAM_MODEL_ID, type CandidatePreview, type Device, type Hypothesis, type WorkerRequest, type WorkerResponse } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -217,7 +217,9 @@ function finishMask(logits: Float32Array, offset: number, seeds: { x: number; y:
   if (!emb || !image) throw new Error("Not ready");
   const clean = cleanLogits(logits, offset, emb.geometry, seeds);
   const coarse = upsampleLogits(clean, 0, emb.geometry, image.width, image.height);
-  return refineMask(coarse, image.rgba, image.width, image.height, undefined, image.edges);
+  // Close gaps at faint boundaries, then snap the edge to the photo.
+  const grown = growMask(coarse, image.rgba, image.width, image.height, image.edges);
+  return refineMask(grown, image.rgba, image.width, image.height, undefined, image.edges);
 }
 
 async function decode(id: number, points: Point[], variant: number | null) {
@@ -403,7 +405,8 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
         const scale = Math.max(image.width, image.height) / 2048;
         const band = Math.max(4, Math.round(8 * scale));
         const opts = { ...defaultRefineOptions(image.width, image.height, band), radius: band * 3 };
-        const refined = refineMask(new Uint8Array(msg.mask), image.rgba, image.width, image.height, opts, image.edges);
+        const grown = growMask(new Uint8Array(msg.mask), image.rgba, image.width, image.height, image.edges);
+        const refined = refineMask(grown, image.rgba, image.width, image.height, opts, image.edges);
         post({ type: "refined", id: msg.id, mask: refined.buffer as ArrayBuffer }, [refined.buffer as ArrayBuffer]);
       }));
       break;

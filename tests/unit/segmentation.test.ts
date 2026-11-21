@@ -83,8 +83,9 @@ describe("SAM post-processing", () => {
     for (let y = 20; y < 120; y++) for (let x = 100; x < 160; x++) l[y * LOW_RES + x] = (x + y) % 2 ? 0.3 : -0.3;
     const c = cleanLogits(l, 0, G, []);
     let uncertain = 0;
-    for (let y = 0; y < 192; y++) for (let x = 0; x < 256; x++) if (Math.abs(c[y * LOW_RES + x]!) < 2) uncertain++;
-    expect(uncertain).toBe(0); // every cell decided: no semi-transparent blotches
+    // Every cell is decided well outside the soft zone (±0.25): no semi-transparent blotches.
+    for (let y = 0; y < 192; y++) for (let x = 0; x < 256; x++) if (Math.abs(c[y * LOW_RES + x]!) < 0.5) uncertain++;
+    expect(uncertain).toBe(0);
     const up = upsampleLogits(c, 0, G, 1600, 1200);
     let partial = 0;
     for (let i = 0; i < up.length; i += 7) if (up[i]! > 10 && up[i]! < 245) partial++;

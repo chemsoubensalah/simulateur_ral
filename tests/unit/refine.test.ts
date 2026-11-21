@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultRefineOptions, edgeMap, refineMask } from "@/lib/mask/refine";
+import { defaultRefineOptions, edgeMap, growMask, refineMask } from "@/lib/mask/refine";
 
 type RGB = [number, number, number];
 
@@ -69,5 +69,30 @@ describe("edge refinement (two-colour unmixing)", () => {
     const e = edgeMap(rgba, W, H);
     expect(e[20 * W + 39]).toBeGreaterThan(100);
     expect(e[20 * W + 20]).toBe(0);
+  });
+
+  it("growMask closes a gap at a faint boundary but stops at a visible edge and other colours", () => {
+    // Wall (x < 50) next to a slightly lighter ceiling (x ≥ 50) separated by a dark crease at x = 50.
+    const rgba = photo(W, H, (x) => (x === 50 ? [150, 150, 150] : x < 50 ? [200, 198, 192] : [214, 213, 210]), 2);
+    const mask = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < 40; x++) mask[y * W + x] = 255; // SAM stopped 10 px early
+    const out = growMask(mask, rgba, W, H, edgeMap(rgba, W, H), { maxDist: 12 });
+    const row = 20 * W;
+    for (let x = 40; x < 48; x++) expect(out[row + x], `x=${x}`).toBe(255); // gap closed
+    for (let x = 51; x < 70; x++) expect(out[row + x], `x=${x}`).toBe(0); // did not cross the crease
+    // Never grows into a clearly different colour.
+    const sofa = photo(W, H, (x) => (x < 40 ? WALL : SOFA), 2);
+    const out2 = growMask(mask, sofa, W, H, edgeMap(sofa, W, H), { maxDist: 12 });
+    expect(out2[row + 45]).toBe(0);
+  });
+
+  it("growMask is bounded by maxDist on uniform colour", () => {
+    const rgba = photo(W, H, () => WALL, 2);
+    const mask = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < 20; x++) mask[y * W + x] = 255;
+    const out = growMask(mask, rgba, W, H, edgeMap(rgba, W, H), { maxDist: 6 });
+    const row = 20 * W;
+    expect(out[row + 24]).toBe(255);
+    expect(out[row + 30]).toBe(0);
   });
 });

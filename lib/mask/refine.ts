@@ -222,3 +222,95 @@ export function refineMask(
   }
   return out;
 }
+
+/**
+ * Edge-aware growing: extend a mask outwards into neighbouring pixels that have
+ * the same colour as the surface right next to them, up to `maxDist` px, and
+ * never across a visible edge. Closes the gaps SAM leaves at faint boundaries
+ * (e.g. a wall meeting a white ceiling) without leaking far into the neighbour.
+ */
+export function growMask(
+  mask: Uint8Array,
+  rgba: Uint8Array | Uint8ClampedArray,
+  w: number,
+  h: number,
+  edges: Uint8Array,
+  opts: { maxDist?: number; tolerance?: number; edgeStop?: number } = {},
+): Uint8Array {
+  const maxDist = opts.maxDist ?? Math.max(3, Math.round((1.5 * Math.max(w, h)) / 256));
+  const tol2 = (opts.tolerance ?? 9) ** 2;
+  const edgeStop = opts.edgeStop ?? 18;
+  const out = mask.slice();
+  const dist = new Uint8Array(w * h);
+  // Reference colour carried from the boundary pixel where growth started.
+  const refR = new Uint8Array(w * h);
+  const refG = new Uint8Array(w * h);
+  const refB = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+  let head = 0;
+  let tail = 0;
+  const inside = (i: number) => mask[i]! >= 128;
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (!inside(i)) continue;
+      if (inside(i - 1) && inside(i + 1) && inside(i - w) && inside(i + w)) continue;
+      // Boundary pixel inside the mask: seed with the mean colour of its inside 3×3.
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const j = i + dy * w + dx;
+          if (!inside(j)) continue;
+          r += rgba[j * 4]!; g += rgba[j * 4 + 1]!; b += rgba[j * 4 + 2]!; n++;
+        }
+      refR[i] = r / n; refG[i] = g / n; refB[i] = b / n;
+      dist[i] = 0;
+      queue[tail++] = i;
+    }
+  const visited = new Uint8Array(w * h);
+  for (let i = 0; i < tail; i++) visited[queue[i]!] = 1;
+  while (head < tail) {
+    const i = queue[head++]!;
+    const d = dist[i]!;
+    if (d >= maxDist) continue;
+    const x = i % w;
+    const y = (i - x) / w;
+    for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) {
+      if (j < 0 || visited[j] || inside(j)) continue;
+      visited[j] = 1;
+      if (edges[j]! > edgeStop) continue;
+      // Compare the 3×3 mean colour (robust to sensor noise) with the reference.
+      const jx = j % w;
+      const jy = (j - jx) / w;
+      let cr = 0, cg = 0, cb = 0, cn = 0;
+      for (let yy = Math.max(0, jy - 1); yy <= Math.min(h - 1, jy + 1); yy++)
+        for (let xx = Math.max(0, jx - 1); xx <= Math.min(w - 1, jx + 1); xx++) {
+          const k = (yy * w + xx) * 4;
+          cr += rgba[k]!; cg += rgba[k + 1]!; cb += rgba[k + 2]!; cn++;
+        }
+      const dr = cr / cn - refR[i]!, dg = cg / cn - refG[i]!, db = cb / cn - refB[i]!;
+      if (dr * dr + dg * dg + db * db > tol2) continue;
+      out[j] = 255;
+      dist[j] = d + 1;
+      refR[j] = refR[i]!; refG[j] = refG[i]!; refB[j] = refB[i]!;
+      queue[tail++] = j;
+    }
+  }
+  // Smooth the grown front: one 3×3 majority pass over pixels that changed or touch a change.
+  const smoothed = out.slice();
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (inside(i)) continue; // never remove the original selection
+      let changedNear = false;
+      let on = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const j = i + dy * w + dx;
+          if (out[j] !== mask[j]) changedNear = true;
+          if (out[j]! >= 128) on++;
+        }
+      if (changedNear) smoothed[i] = on >= 5 ? 255 : mask[i]!;
+    }
+  return smoothed;
+}
