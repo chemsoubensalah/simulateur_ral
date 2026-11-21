@@ -59,6 +59,13 @@ export function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
 }
 
+/** iPhone / iPad: Safari closes a page that uses more than ~1.4 GB. */
+export function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
+}
+
 /** Heuristic for devices where on-device encoding would take too long. */
 export function isLikelySlowDevice(): boolean {
   if (hasWebGPU()) return false;
@@ -79,8 +86,18 @@ async function canvasToJpeg(canvas: HTMLCanvasElement, maxSize: number): Promise
 export async function fetchServerEmbeddings(canvas: HTMLCanvasElement): Promise<ExternalEmbeddings> {
   const cachedPe = await idbGet(PE_CACHE_KEY);
   const body = await canvasToJpeg(canvas, 1024);
-  const res = await fetch(`${SERVER_ENDPOINT}?pe=${cachedPe ? 0 : 1}`, { method: "POST", body, headers: { "content-type": "image/jpeg" } });
-  if (!res.ok) throw new Error(`Server segmentation failed (${res.status})`);
+  let res: Response | null = null;
+  // Retry briefly when the server is busy (503) or the network hiccups.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetch(`${SERVER_ENDPOINT}?pe=${cachedPe ? 0 : 1}`, { method: "POST", body, headers: { "content-type": "image/jpeg" } });
+      if (res.status !== 503) break;
+    } catch {
+      res = null;
+    }
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  if (!res || !res.ok) throw new Error(`Server segmentation failed (${res?.status ?? "network"})`);
   const { header, payload } = unpackEnvelope<EmbedResponseHeader>(await res.arrayBuffer());
   const n = header.dims.reduce((a, b) => a * b, 1);
   const halves = new Uint16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
@@ -245,8 +262,12 @@ export class SegmentationClient {
     this.setStatus({ phase: "loading", loaded: 0, total: 0 });
     try {
       const server = this.mode !== "device" && (await isServerAvailable());
-      const useServer = this.mode === "server" ? true : this.mode === "auto" && server && isLikelySlowDevice();
+      // The image encoder needs ~1.5–2 GB of memory for a few seconds (SAM's
+      // global attention). Phones and tablets get killed by the browser at that
+      // point, so they use the server for this step; taps still run on the device.
+      const useServer = this.mode === "server" ? true : this.mode === "auto" && server && (isMobileDevice() || isLikelySlowDevice());
       if (useServer) return await this.startServer(image);
+      if (this.mode === "auto" && isIOS()) throw new Error("On-device analysis is not possible on this device and the server is unavailable");
       await this.startDevice(image, server);
     } catch (e) {
       this.setStatus({ phase: "error", message: e instanceof Error ? e.message : String(e) });
