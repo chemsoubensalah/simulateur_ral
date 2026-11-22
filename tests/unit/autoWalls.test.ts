@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { components, distanceInside, throughOpenings } from "@/lib/segmentation/autoWalls";
+import { components, distanceInside, enclosedBy, sharpBorderShare, throughOpenings } from "@/lib/segmentation/autoWalls";
+import { edgeMap } from "@/lib/mask/refine";
 import { guidedFilterMask } from "@/lib/mask/guided";
 import { ADE } from "@/lib/segmentation/scene";
 
@@ -66,5 +67,37 @@ describe("guided filter", () => {
       return n;
     })();
     expect(wrong).toBeLessThan(before / 3);
+  });
+});
+
+describe("objects hung on a wall vs light on the wall", () => {
+  const W = 32;
+  const H = 32;
+  const size = 256;
+  const make = (sharp: boolean) => {
+    const rgba = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) {
+        const k = (y * size + x) * 4;
+        // a square 96..160 in the middle: an air conditioner (sharp) or a sunlit patch (soft)
+        const d = Math.max(Math.abs(x - 128), Math.abs(y - 128));
+        const t = sharp ? (d < 32 ? 1 : 0) : Math.max(0, Math.min(1, (48 - d) / 32));
+        const v = 150 + 80 * t;
+        rgba[k] = rgba[k + 1] = rgba[k + 2] = v;
+        rgba[k + 3] = 255;
+      }
+    return { rgba, width: size, height: size, edges: edgeMap(rgba, size, size) };
+  };
+  const cells = new Uint8Array(W * H);
+  for (let y = 12; y < 20; y++) for (let x = 12; x < 20; x++) cells[y * W + x] = 1;
+  const wall = Uint8Array.from(cells, (v) => 1 - v);
+
+  it("a crisp object has a sharp border, a sunlit patch does not", () => {
+    expect(sharpBorderShare(cells, W, H, make(true))).toBeGreaterThan(0.5);
+    expect(sharpBorderShare(cells, W, H, make(false))).toBeLessThan(0.5);
+  });
+  it("detects a hole fully inside the wall", () => {
+    expect(enclosedBy(cells, wall, W, H)).toBe(1);
+    expect(enclosedBy(wall, cells, W, H)).toBeLessThan(0.5);
   });
 });

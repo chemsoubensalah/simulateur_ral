@@ -118,6 +118,54 @@ function erode(bin: Uint8Array, W: number, H: number): Uint8Array {
   return out;
 }
 
+/** Share of a region's outside border that belongs to `around` (1 = a hole fully inside it). */
+export function enclosedBy(cells: Uint8Array, around: Uint8Array, W: number, H: number): number {
+  let border = 0;
+  let inside = 0;
+  for (let i = 0; i < cells.length; i++) {
+    if (!cells[i]) continue;
+    const x = i % W;
+    const y = (i - x) / W;
+    const nb = [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1];
+    for (const j of nb) {
+      if (j < 0) {
+        border++; // the photo's edge counts as "not enclosed"
+        continue;
+      }
+      if (cells[j]) continue;
+      border++;
+      if (around[j]) inside++;
+    }
+  }
+  return border ? inside / border : 0;
+}
+
+/**
+ * Share of a region's border cells that lie on a sharp edge of the photo. Objects
+ * (an air conditioner, a frame) have crisp outlines; a patch of sunlight or a
+ * shadow on the same wall fades softly.
+ */
+export function sharpBorderShare(cells: Uint8Array, W: number, H: number, image: AutoImage): number {
+  let border = 0;
+  let sharp = 0;
+  for (let i = 0; i < cells.length; i++) {
+    if (!cells[i]) continue;
+    const x = i % W;
+    const y = (i - x) / W;
+    const isBorder = (x > 0 && !cells[i - 1]) || (x < W - 1 && !cells[i + 1]) || (y > 0 && !cells[i - W]) || (y < H - 1 && !cells[i + W]);
+    if (!isBorder) continue;
+    border++;
+    const x0 = Math.floor((x / W) * image.width);
+    const x1 = Math.min(image.width, Math.ceil(((x + 1) / W) * image.width));
+    const y0 = Math.floor((y / H) * image.height);
+    const y1 = Math.min(image.height, Math.ceil(((y + 1) / H) * image.height));
+    let m = 0;
+    for (let yy = y0; yy < y1 && m < 30; yy++) for (let xx = x0; xx < x1; xx++) if (image.edges[yy * image.width + xx]! > m) m = image.edges[yy * image.width + xx]!;
+    if (m >= 30) sharp++;
+  }
+  return border ? sharp / border : 0;
+}
+
 const SEEN_THROUGH: ReadonlySet<SceneKind> = new Set(["window", "door", "outdoor"]);
 
 /**
@@ -148,6 +196,65 @@ export function throughOpenings(bin: Uint8Array, grid: Uint8Array, W: number, H:
 /** Map a W×H low-res cell to its index in the 256×256 logit frame. */
 const frameIndex = (i: number, W: number) => Math.floor(i / W) * LOW_RES + (i % W);
 
+/** Scene classes that are not part of a paintable surface (objects, openings, other surfaces). */
+const isObjectClass = (cls: number, ofKind: boolean) => !ofKind && sceneKind(cls) !== "other";
+
+/** Step 5 of buildAutoSurfaces (modifies `logits`). */
+async function cutOutObjects(logits: Float32Array, ofKind: Uint8Array, input: AutoInput, minCells: number): Promise<void> {
+  const { grid, gridW: W, gridH: H, geometry, image, decode } = input;
+  if (!decode) return;
+  const total = W * H;
+  const suspicious = new Uint8Array(total);
+  for (let i = 0; i < total; i++) suspicious[i] = logits[frameIndex(i, W)]! > 0 && isObjectClass(grid[i]!, !!ofKind[i]) ? 1 : 0;
+  const dist = distanceInside(suspicious, W, H);
+  const comps = components(suspicious, W, H)
+    .filter((c) => c.length >= minCells && c.some((i) => dist[i]! >= 1.5))
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 8);
+  if (!comps.length) return;
+  const prompts = comps.map((c) => {
+    let best = c[0]!;
+    for (const i of c) if (dist[i]! > dist[best]!) best = i;
+    return { x: (((best % W) + 0.5) / W) * image.width, y: ((Math.floor(best / W) + 0.5) / H) * image.height, label: 1 as const };
+  });
+  const res = await decode(prompts.map((p) => [p]));
+  comps.forEach((comp, ci) => {
+    const inComp = new Uint8Array(total);
+    for (const i of comp) inComp[i] = 1;
+    let bestOff = -1;
+    let bestScore = 0;
+    for (let k = 0; k < 3; k++) {
+      const off = (ci * 3 + k) * MASK;
+      const bin = lowResBinary(res.logits, off, geometry).data;
+      let n = 0;
+      let hit = 0;
+      let notKind = 0;
+      for (let i = 0; i < total; i++)
+        if (bin[i]) {
+          n++;
+          hit += inComp[i]!;
+          notKind += ofKind[i] ? 0 : 1;
+        }
+      if (!n) continue;
+      const cover = hit / comp.length;
+      const precision = notKind / n;
+      // SAM's object must mostly be "not wall" and explain most of the suspicious cells.
+      if (cover < 0.5 || precision < 0.6) continue;
+      if (cover * precision > bestScore) [bestScore, bestOff] = [cover * precision, off];
+    }
+    if (bestOff >= 0) {
+      for (let i = 0; i < MASK; i++) {
+        const v = res.logits[bestOff + i]!;
+        if (v > 0 && -v < logits[i]!) logits[i] = -v;
+      }
+    } else {
+      // SAM did not confirm: trust the scene map only where it is sure (the component's core).
+      const core = erode(inComp, W, H);
+      for (let i = 0; i < total; i++) if (core[i]) logits[frameIndex(i, W)] = Math.min(logits[frameIndex(i, W)]!, -3);
+    }
+  });
+}
+
 /* ---------- main ---------- */
 
 export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall" | "ceiling"; mask: Uint8Array }[]> {
@@ -167,7 +274,7 @@ export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall
         }
       return n ? k / n : 0;
     };
-    const members = candidates.filter((c) => {
+    let members = candidates.filter((c) => {
       const ci = info.get(c.id)!;
       return ci.kind === kind && ci.purity >= 0.6;
     });
@@ -176,6 +283,30 @@ export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall
       const ci = info.get(c.id)!;
       return ci.kind !== kind && ci.kind !== "other" && ci.purity >= 0.6;
     });
+    // Objects hung on a wall (air conditioner, frame, clock) that the coarse scene map
+    // calls "wall": a small surface lying inside a larger one, in a clearly different colour.
+    {
+      const labs = new Map(members.map((m) => [m.id, meanLab(m.bin, W, H, image.rgba, image.width, image.height)]));
+      const onWall: AutoCandidate[] = [];
+      for (const m of members) {
+        if (m.area > 0.05) continue;
+        const others = new Uint8Array(total);
+        let host: AutoCandidate | null = null;
+        for (const o of members) {
+          if (o === m || o.area <= m.area) continue;
+          for (let i = 0; i < total; i++) if (o.bin[i]) others[i] = 1;
+          if (!host || o.area > host.area) host = o;
+        }
+        if (!host || enclosedBy(m.bin, others, W, H) < 0.75) continue;
+        const a = labs.get(m.id);
+        const b = labs.get(host.id);
+        if (a && b && deltaE2000(a, b, 3) > 6 && sharpBorderShare(m.bin, W, H, image) >= 0.5) onWall.push(m);
+      }
+      if (onWall.length) {
+        members = members.filter((m) => !onWall.includes(m));
+        objects.push(...onWall);
+      }
+    }
     const objectMask = new Uint8Array(total);
     for (const o of objects) for (let i = 0; i < total; i++) if (o.bin[i]) objectMask[i] = 1;
 
@@ -184,7 +315,7 @@ export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall
     const labOf = (bin: Uint8Array) => meanLab(bin, W, H, image.rgba, image.width, image.height);
     const refLabs = members.filter((m) => m.area > 0.004).map((m) => labOf(m.bin)).filter((l): l is Lab => !!l);
     // Same paint in different light differs mostly in lightness: weigh it down (kL = 3).
-    const looksLikeWall = (lab: Lab | null) => !lab || !refLabs.length || Math.min(...refLabs.map((r) => deltaE2000(lab, r, 3))) < 10;
+    const looksLikeWall = (lab: Lab | null, limit = 10) => !lab || !refLabs.length || Math.min(...refLabs.map((r) => deltaE2000(lab, r, 3))) < limit;
     const excluded = new Uint8Array(total);
     const covered = new Uint8Array(total);
     const cover = (bin: Uint8Array) => {
@@ -217,9 +348,13 @@ export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall
       });
       const res = await decode(prompts.map((p) => [p]));
       let accepted = 0;
+      const memberMask = new Uint8Array(total);
+      for (const p of parts) for (let i = 0; i < total; i++) if (p.bin[i]) memberMask[i] = 1;
       comps.forEach((comp, ci) => {
         const inComp = new Uint8Array(total);
         for (const i of comp) inComp[i] = 1;
+        // A hole inside the wall is more likely an object on it: be stricter about its colour.
+        const limit = enclosedBy(inComp, memberMask, W, H) >= 0.75 ? 5 : 10;
         let bestK = -1;
         let bestScore = -Infinity;
         let bestBin: Uint8Array | null = null;
@@ -237,7 +372,9 @@ export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall
             }
           const stab = lowResStats(res.logits, off, geometry).stability;
           if (purityOf(bin) < 0.7 || objHit / n > 0.1 || gapHit / comp.length < 0.3 || stab < 0.6) continue;
-          if (!looksLikeWall(labOf(bin))) {
+          // A hole inside the wall only counts as an object when its outline is crisp.
+          const strict = limit < 10 && sharpBorderShare(bin, W, H, image) >= 0.5;
+          if (!looksLikeWall(labOf(bin), strict ? limit : 10)) {
             // SAM sees a distinct surface here that does not look like the walls: keep it out.
             if (stab >= 0.8 && gapHit / comp.length >= 0.5) for (let i = 0; i < total; i++) if (bin[i] && inComp[i]) excluded[i] = 1;
             continue;
@@ -274,6 +411,11 @@ export async function buildAutoSurfaces(input: AutoInput): Promise<{ kind: "wall
         const v = o.logits[i]!;
         if (v > 0 && -v < logits[i]!) logits[i] = -v;
       }
+    // 5. Where the scene map sees something else inside the selection (a chandelier
+    //    hanging in front of the wall, a door, a frame…), ask SAM for that object's
+    //    precise outline and cut it out.
+    if (decode) await cutOutObjects(logits, ofKind, input, minCells);
+
     const union = new Uint8Array(total);
     for (let i = 0; i < total; i++) union[i] = logits[frameIndex(i, W)]! > 0 ? 1 : 0;
     const drop = throughOpenings(union, grid, W, H);
