@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Phones held sideways: photo and panel side by side instead of stacked. */
+@custom-variant land (@media (orientation: landscape) and (max-height: 600px));
+
 @theme {
   --color-brand-50: #eef6f4;
   --color-brand-100: #d5ebe5;

@@ -10,13 +10,13 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur print:hidden">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4">
-        <Link href={`/${locale}`} className="flex items-center gap-2.5 text-ink" aria-label={BRAND.name}>
-          <span aria-hidden className="inline-block h-7 w-7 shrink-0 rounded-full bg-[conic-gradient(#e4572e,#f3a712,#29bf12,#1f8a70,#2e86ab,#a23b72,#e4572e)] shadow-inner" />
-          <span className="flex flex-col leading-none">
-            <span className="text-lg font-extrabold tracking-wide" dir="ltr">
+        <Link href={`/${locale}`} className="flex min-w-0 items-center gap-2 text-ink sm:gap-2.5" aria-label={BRAND.name}>
+          <span aria-hidden className="inline-block h-6 w-6 shrink-0 sm:h-7 sm:w-7 rounded-full bg-[conic-gradient(#e4572e,#f3a712,#29bf12,#1f8a70,#2e86ab,#a23b72,#e4572e)] shadow-inner" />
+          <span className="flex min-w-0 flex-col leading-none">
+            <span className="whitespace-nowrap text-base font-extrabold tracking-wide sm:text-lg" dir="ltr">
               {BRAND.name}
             </span>
-            <span className="text-[11px] font-medium text-muted">{t("common.tagline")}</span>
+            <span className="hidden whitespace-nowrap text-[11px] font-medium text-muted min-[360px]:block">{t("common.tagline")}</span>
           </span>
         </Link>
         <LanguageSwitcher />

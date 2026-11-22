@@ -1167,8 +1167,8 @@ export function Editor() {
   else if (step === "walls" && tool === "smart" && aiReady && !session && selected?.coverage === 0 && !showHint) topChip = <AiStatus status={seg} compact />;
 
   return (
-    <div className="lg:grid lg:h-[calc(100dvh-3.5rem)] lg:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="sticky top-14 z-10 h-[52dvh] bg-canvas sm:h-[60dvh] lg:static lg:h-full">
+    <div className="lg:grid lg:h-[calc(100dvh-3.5rem)] lg:grid-cols-[minmax(0,1fr)_400px] land:grid land:h-[calc(100dvh-3.5rem)] land:grid-cols-[minmax(0,1fr)_minmax(280px,42%)]">
+      <div className="sticky top-14 z-10 h-[52dvh] bg-canvas sm:h-[60dvh] lg:static lg:h-full land:static land:h-full">
         <Stage
           ref={stageRef}
           doc={doc}
@@ -1202,7 +1202,7 @@ export function Editor() {
         />
       </div>
 
-      <aside className="flex flex-col gap-5 border-line bg-surface p-4 text-base lg:overflow-y-auto lg:border-s" aria-label={t("editor.title")}>
+      <aside className="flex flex-col gap-5 border-line bg-surface p-4 text-base lg:overflow-y-auto lg:border-s land:overflow-y-auto land:border-s" aria-label={t("editor.title")}>
         <StepNav step={step} onStep={goStep} done={{ walls: anyPainted, colors: anyPainted && step === "share" }} />
 
         {step === "walls" && (
