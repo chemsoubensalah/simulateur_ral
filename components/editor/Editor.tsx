@@ -530,6 +530,8 @@ export function Editor() {
     setAutoBusy(true);
     try {
       await client.waitForUnderstanding(20_000);
+      // The scene server may have been starting up: ask once more before giving up.
+      if (!client.sceneReady) await client.retryScene(45_000);
       const found = await client.autoSurfaces();
       if (!found.length) {
         setNotice(t("ai.noWallsFound"));

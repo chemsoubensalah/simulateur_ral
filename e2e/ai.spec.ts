@@ -210,3 +210,18 @@ test("easy mode: each tapped wall becomes its own surface; in the colour step a 
   await expect(page.getByTestId("stage").getByRole("alert")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("paint all walls still works when the scene server fails at first (cold start)", async ({ page }) => {
+  const errors = collectErrors(page);
+  let failures = 0;
+  await page.route("**/api/scene", (route) =>
+    route.request().method() === "POST" && failures++ < 3 ? route.fulfill({ status: 504, body: "timeout" }) : route.continue(),
+  );
+  await openRoom(page, "/en/editor");
+  await expect.poll(() => failures, { timeout: 30_000 }).toBeGreaterThanOrEqual(3); // the first request gave up
+  await page.getByTestId("paint-all-walls").click();
+  await expect(page.getByTestId("surface-list").locator("li")).toHaveCount(2, { timeout: 90_000 });
+  expect(await coverageOf(page)).toBeGreaterThan(18);
+  // The failed requests show up as console errors in the browser; nothing else.
+  expect(errors.filter((e) => !/504|Failed to load resource/.test(e))).toEqual([]);
+});

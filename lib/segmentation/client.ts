@@ -105,7 +105,8 @@ export async function fetchScene(canvas: HTMLCanvasElement): Promise<SceneMap | 
         const { header, payload } = unpackEnvelope<SceneResponseHeader>(await res.arrayBuffer());
         return { width: header.width, height: header.height, classes: payload.slice() };
       }
-      if (res && res.status !== 503) return null;
+      // Retry server errors and timeouts (e.g. a cold start loading the model); give up on 4xx.
+      if (res && res.status < 500) return null;
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }
   } catch {
@@ -296,6 +297,7 @@ export class SegmentationClient {
     this.setStatus({ phase: "loading", loaded: 0, total: 0 });
     // Scene understanding runs on the server in parallel with everything else.
     this.scene = null;
+    this.sceneCanvas = image.canvas;
     this.scenePromise = this.mode === "device" ? null : fetchScene(image.canvas).then((s) => (this.scene = s));
     try {
       const server = this.mode !== "device" && (await isServerAvailable());
@@ -383,6 +385,30 @@ export class SegmentationClient {
     if (!this.scenePromise) return null;
     const scene = await Promise.race([this.scenePromise.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), timeoutMs))]);
     return scene ? wallHintPoint(scene, WALL_CLASSES) : null;
+  }
+
+  private sceneCanvas: HTMLCanvasElement | null = null;
+
+  /**
+   * Ask the server again for scene understanding when the first request failed
+   * (e.g. the server was starting). Resolves when it reached the worker or failed.
+   */
+  async retryScene(timeoutMs: number): Promise<boolean> {
+    if (this.sceneSent) return true;
+    if (this.mode === "device" || !this.sceneCanvas || this.disposed) return false;
+    const deadline = Date.now() + timeoutMs;
+    const timeout = (ms: number) => new Promise<"timeout">((r) => setTimeout(() => r("timeout"), ms));
+    // A request that is still running (slow cold start) gets time to finish first.
+    const first = this.scenePromise ? await Promise.race([this.scenePromise.catch(() => null), timeout(timeoutMs)]) : null;
+    if (first === "timeout") return false;
+    if (first) {
+      // Arrived: the pending sendScene() delivers it to the worker.
+      while (!this.sceneSent && Date.now() < deadline) await timeout(100);
+      return this.sceneSent;
+    }
+    this.scenePromise = fetchScene(this.sceneCanvas).then((sc) => (this.scene = sc));
+    await Promise.race([this.sendScene(), timeout(Math.max(0, deadline - Date.now()))]);
+    return this.sceneSent;
   }
 
   /** Waits until surface analysis and scene understanding are done, or the timeout. */
