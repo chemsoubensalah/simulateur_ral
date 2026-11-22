@@ -11,6 +11,8 @@ import sharp from "sharp";
 import { packEnvelope } from "@/lib/segmentation/f16";
 import { rleEncode } from "@/lib/mask/rle";
 import { dedupe, maskSize, type Sam3ResponseHeader } from "@/lib/segmentation/sam3";
+import { createHash } from "node:crypto";
+import { allowAnalysis, cached, remember } from "@/lib/server/sam3Guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +27,12 @@ function provider(): "fal" | "local" | "remote" | null {
   if (process.env.SAM3_ONNX_DIR) return "local";
   if (process.env.SAM3_REMOTE_URL) return "remote";
   return null;
+}
+
+function binary(buf: Uint8Array): Response {
+  return new Response(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, {
+    headers: { "content-type": "application/octet-stream", "cache-control": "no-store" },
+  });
 }
 
 export async function GET() {
@@ -43,6 +51,13 @@ export async function POST(req: Request) {
   if (!/^image\/(jpeg|png|webp)/.test(type)) return Response.json({ error: "Expected an image" }, { status: 415 });
   const body = Buffer.from(await req.arrayBuffer());
   if (body.length > MAX_BYTES) return Response.json({ error: "Image too large" }, { status: 413 });
+  // The same photo is analysed only once.
+  const hash = createHash("sha256").update(body).digest("hex");
+  const hit = cached(hash);
+  if (hit) return binary(hit);
+  // Limits per visitor and per day (each analysis may be paid).
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]!.trim() || "unknown";
+  if (!allowAnalysis(ip)) return Response.json({ error: "Limit reached" }, { status: 429 });
   // The self-hosted model uses all cores for one photo at a time.
   if (p === "local" && running >= 2) return Response.json({ error: "Busy" }, { status: 503 });
   if (p === "remote") {
@@ -53,7 +68,10 @@ export async function POST(req: Request) {
       headers: { "content-type": type, ...(token ? { "x-sam3-token": token } : {}) },
     }).catch(() => null);
     if (!res) return Response.json({ error: "SAM 3 server unreachable" }, { status: 502 });
-    return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/octet-stream", "cache-control": "no-store" } });
+    if (!res.ok) return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json" } });
+    const answer = new Uint8Array(await res.arrayBuffer());
+    remember(hash, answer);
+    return binary(answer);
   }
   running++;
   const t0 = Date.now();
@@ -89,9 +107,8 @@ export async function POST(req: Request) {
       o += c.length;
     }
     const buf = packEnvelope(header, payload);
-    return new Response(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, {
-      headers: { "content-type": "application/octet-stream", "cache-control": "no-store" },
-    });
+    remember(hash, buf);
+    return binary(buf);
   } catch (e) {
     console.error("sam3", e);
     return Response.json({ error: "Segmentation failed" }, { status: 502 });

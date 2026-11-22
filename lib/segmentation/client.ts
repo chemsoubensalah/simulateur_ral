@@ -98,34 +98,50 @@ async function canvasToJpeg(canvas: HTMLCanvasElement, maxSize: number): Promise
 const SCENE_ENDPOINT = "/api/scene";
 const WALLS_ENDPOINT = "/api/walls";
 
-let wallsAvailable: Promise<boolean> | null = null;
-/** Whether the server offers SAM 3 walls (checked once per page load). */
-export function isWallsServerAvailable(): Promise<boolean> {
-  wallsAvailable ??= fetch(WALLS_ENDPOINT)
-    .then((r) => (r.ok ? r.json() : { available: false }))
-    .then((j: { available?: boolean }) => !!j.available)
-    .catch(() => false);
-  return wallsAvailable;
+let wallsInfo: Promise<{ available: boolean; provider: string | null }> | null = null;
+/** Whether the server offers SAM 3 walls, and which provider (checked once per page load). */
+export function wallsServer(): Promise<{ available: boolean; provider: string | null }> {
+  wallsInfo ??= fetch(WALLS_ENDPOINT)
+    .then((r) => (r.ok ? r.json() : { available: false, provider: null }))
+    .then((j: { available?: boolean; provider?: string | null }) => ({ available: !!j.available, provider: j.provider ?? null }))
+    .catch(() => ({ available: false, provider: null }));
+  return wallsInfo;
 }
 
-/** SAM 3 walls and ceiling from the server (null if unavailable or failed). */
+function decodeSam3(buf: ArrayBuffer): Sam3Mask[] {
+  const { header, payload } = unpackEnvelope<Sam3ResponseHeader>(buf);
+  const n = header.width * header.height;
+  return header.instances.map((m) => ({
+    kind: m.kind,
+    score: m.score,
+    width: header.width,
+    height: header.height,
+    mask: rleDecode(payload.subarray(m.offset, m.offset + m.length), n),
+  }));
+}
+
+/**
+ * SAM 3 walls and ceiling from the server (null if unavailable or failed).
+ * The answer is kept on the device per photo: opening the same photo again
+ * costs nothing.
+ */
 export async function fetchSam3(canvas: HTMLCanvasElement): Promise<Sam3Mask[] | null> {
-  if (!(await isWallsServerAvailable())) return null;
+  if (!(await wallsServer()).available) return null;
   try {
-    const body = await canvasToJpeg(canvas, 1536);
+    const blob = await canvasToJpeg(canvas, 1536);
+    const bytes = await blob.arrayBuffer();
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const key = `sam3:${hash}`;
+    const cached = await idbGet(key).catch(() => undefined);
+    if (cached) return decodeSam3(cached.body);
     for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await fetch(WALLS_ENDPOINT, { method: "POST", body, headers: { "content-type": "image/jpeg" } }).catch(() => null);
+      const res = await fetch(WALLS_ENDPOINT, { method: "POST", body: blob, headers: { "content-type": "image/jpeg" } }).catch(() => null);
       if (res?.ok) {
-        const { header, payload } = unpackEnvelope<Sam3ResponseHeader>(await res.arrayBuffer());
-        const n = header.width * header.height;
-        return header.instances.map((m) => ({
-          kind: m.kind,
-          score: m.score,
-          width: header.width,
-          height: header.height,
-          mask: rleDecode(payload.subarray(m.offset, m.offset + m.length), n),
-        }));
+        const buf = await res.arrayBuffer();
+        void idbPut(key, buf, "application/octet-stream").catch(() => undefined);
+        return decodeSam3(buf);
       }
+      // 429 = this visitor's or today's limit reached: use the built-in AI instead.
       if (res && res.status < 500) return null;
       await new Promise((r) => setTimeout(r, 2000));
     }
@@ -341,8 +357,13 @@ export class SegmentationClient {
     this.scenePromise = this.mode === "device" ? null : fetchScene(image.canvas).then((s) => (this.scene = s));
     // The most precise walls (SAM 3 on the server), when the server offers them.
     this.sam3Done = undefined;
-    this.sam3Promise = this.mode === "device" ? null : fetchSam3(image.canvas);
-    void this.sam3Surfaces(180_000);
+    this.sam3Promise = null;
+    this.sam3Canvas = this.mode === "device" ? null : image.canvas;
+    // Free providers start right away; a paid one only when the customer actually
+    // selects walls (first tap or "Paint all walls"), so just opening photos costs nothing.
+    void wallsServer().then((w) => {
+      if (w.available && w.provider !== "fal") this.ensureSam3();
+    });
     try {
       const server = this.mode !== "device" && (await isServerAvailable());
       // The image encoder needs ~1.5–2 GB of memory for a few seconds (SAM's
@@ -434,10 +455,19 @@ export class SegmentationClient {
   private sceneCanvas: HTMLCanvasElement | null = null;
   private sam3Promise: Promise<Sam3Mask[] | null> | null = null;
   private sam3Done: Sam3Mask[] | null | undefined = undefined;
+  private sam3Canvas: HTMLCanvasElement | null = null;
+
+  /** Start SAM 3 for this photo (once). */
+  ensureSam3(): void {
+    if (this.sam3Promise || !this.sam3Canvas || this.disposed) return;
+    this.sam3Promise = fetchSam3(this.sam3Canvas);
+    void this.sam3Surfaces(180_000);
+  }
 
   /** SAM 3 walls/ceiling (room only), waiting at most `timeoutMs`; null when not available. */
   async sam3Surfaces(timeoutMs: number): Promise<Sam3Mask[] | null> {
     if (this.sam3Done !== undefined) return this.sam3Done;
+    this.ensureSam3();
     if (!this.sam3Promise) return null;
     const res = await Promise.race([this.sam3Promise, new Promise<"timeout">((r) => setTimeout(() => r("timeout"), timeoutMs))]);
     if (res === "timeout") return null;

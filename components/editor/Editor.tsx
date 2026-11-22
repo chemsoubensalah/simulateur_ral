@@ -696,7 +696,8 @@ export function Editor() {
           surfaceId = fresh.id;
         }
       }
-      // SAM 3 knows this wall precisely: use its outline directly.
+      // SAM 3 knows this wall precisely: use its outline directly (and start it on the first tap).
+      segRef.current?.ensureSam3();
       const sam = segRef.current?.sam3Ready;
       const inst = !s && smartMode === "add" && sam && image ? instanceAt(sam, p.x, p.y, image.width, image.height) : null;
       if (inst && image) {
