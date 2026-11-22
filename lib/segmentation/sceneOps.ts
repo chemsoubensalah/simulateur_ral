@@ -76,3 +76,42 @@ export function binaryToLogits(bin: Uint8Array, W: number, H: number): Float32Ar
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) out[y * LOW_RES + x] = bin[y * W + x] ? 3 : -3;
   return out;
 }
+
+/**
+ * Where to show the "tap here" hint: the point deepest inside a wall — the
+ * centre of the window (≈15 % of the map) with the highest share of wall
+ * cells, preferring the middle of the photo. Fractions of the image size, or
+ * null when no clear wall is visible.
+ */
+export function wallHintPoint(scene: SceneMap, classes: ReadonlySet<number>): { fx: number; fy: number } | null {
+  const { width: W, height: H } = scene;
+  // Integral image of the wall indicator.
+  const I = new Float64Array((W + 1) * (H + 1));
+  for (let y = 0; y < H; y++) {
+    let row = 0;
+    for (let x = 0; x < W; x++) {
+      row += classes.has(scene.classes[y * W + x]!) ? 1 : 0;
+      I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1]! + row;
+    }
+  }
+  const r = Math.max(2, Math.round(Math.min(W, H) * 0.075));
+  let best = -1;
+  let bx = 0;
+  let by = 0;
+  for (let y = r; y < H - r; y++)
+    for (let x = r; x < W - r; x++) {
+      if (!classes.has(scene.classes[y * W + x]!)) continue;
+      const x0 = x - r;
+      const y0 = y - r;
+      const x1 = x + r + 1;
+      const y1 = y + r + 1;
+      const sum = I[y1 * (W + 1) + x1]! - I[y0 * (W + 1) + x1]! - I[y1 * (W + 1) + x0]! + I[y0 * (W + 1) + x0]!;
+      const share = sum / ((2 * r + 1) * (2 * r + 1));
+      const central = Math.hypot((x + 0.5) / W - 0.5, (y + 0.5) / H - 0.5);
+      const score = share - 0.25 * central;
+      if (score > best) [best, bx, by] = [score, x, y];
+    }
+  if (best < 0) return null;
+  const share = best + 0.25 * Math.hypot((bx + 0.5) / W - 0.5, (by + 0.5) / H - 0.5);
+  return share >= 0.8 ? { fx: (bx + 0.5) / W, fy: (by + 0.5) / H } : null;
+}

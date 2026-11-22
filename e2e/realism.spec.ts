@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { collectErrors, dist, lassoSelect, pixel } from "./helpers";
+import { collectErrors, dist, goStep, lassoSelect, pixel } from "./helpers";
 
 // Back wall of public/samples/room.jpg, avoiding the sofa and the picture.
 const WALL_POLY = [[480, 260], [1040, 260], [1040, 600], [480, 600]] as const;
@@ -32,6 +32,7 @@ function wallChecksum(page: Page): Promise<number> {
 test("hide stains and defects: on by default, can be switched off, remembered after reload", async ({ page }) => {
   const errors = collectErrors(page);
   await openRoomWithWall(page, "/en/editor");
+  await goStep(page, "colors");
   const toggle = page.getByTestId("cleanup");
   await expect(toggle).toBeChecked();
   const clean = await wallChecksum(page);
@@ -54,6 +55,7 @@ test("hide stains and defects: on by default, can be switched off, remembered af
 test("lighting: evening lamps warm the whole room, back to the photo exactly", async ({ page }) => {
   const errors = collectErrors(page);
   await openRoomWithWall(page, "/ar/editor");
+  await goStep(page, "colors");
   await expect(page.getByTestId("light-photo")).toHaveAttribute("aria-checked", "true");
   const sofa = await pixel(page, ...SOFA);
   const wall = await pixel(page, 700, 450);

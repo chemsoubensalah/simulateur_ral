@@ -24,6 +24,9 @@ import { ColorPanel } from "./ColorPanel";
 import type { PickerTab } from "./ColorPicker";
 import { UploadPanel } from "./UploadPanel";
 import { LightSwitch } from "./LightSwitch";
+import { Advanced, NextButton, StepNav, useAdvanced, type Step } from "./Steps";
+import { SharePanel } from "./SharePanel";
+import { brandSlug } from "@/lib/brand";
 import { CheckIcon, DownloadIcon, ImageIcon, MinusIcon, PlusIcon, SparkleIcon, SpinnerIcon } from "./icons";
 import type { Surface, Tool } from "./types";
 
@@ -32,8 +35,20 @@ const DEFAULT_PAINTS = ["RAL 6021", "RAL 1015", "RAL 5024", "RAL 3012", "RAL 704
 
 /** Distinct tints for detected surfaces (linear 0..1 RGB). */
 const PICK_COLORS: [number, number, number][] = [
-  [0.9, 0.1, 0.29], [0.24, 0.71, 0.29], [1, 0.88, 0.1], [0, 0.51, 0.78], [0.96, 0.51, 0.19], [0.57, 0.12, 0.71], [0.27, 0.94, 0.94],
-  [0.94, 0.2, 0.9], [0.82, 0.96, 0.24], [0.98, 0.75, 0.83], [0, 0.5, 0.5], [0.67, 0.43, 0.16], [0.5, 0, 0], [0, 0, 0.5],
+  [0.9, 0.1, 0.29],
+  [0.24, 0.71, 0.29],
+  [1, 0.88, 0.1],
+  [0, 0.51, 0.78],
+  [0.96, 0.51, 0.19],
+  [0.57, 0.12, 0.71],
+  [0.27, 0.94, 0.94],
+  [0.94, 0.2, 0.9],
+  [0.82, 0.96, 0.24],
+  [0.98, 0.75, 0.83],
+  [0, 0.5, 0.5],
+  [0.67, 0.43, 0.16],
+  [0.5, 0, 0],
+  [0, 0, 0.5],
 ];
 
 let idCounter = 0;
@@ -59,12 +74,26 @@ type SmartSession = {
   provisional: boolean;
   /** Whether other parts of the same wall may be joined (false after "this part only"). */
   merge: boolean;
+  /** Union of the other surfaces' masks: a smart selection does not take walls that already have their own colour. */
+  others: Uint8Array | null;
 };
 
 type PickState =
   | { status: "loading" }
-  | { status: "ready"; list: CandidatePreview[]; pw: number; ph: number; selected: number[] }
-  | { status: "adding"; list: CandidatePreview[]; pw: number; ph: number; selected: number[] };
+  | {
+      status: "ready";
+      list: CandidatePreview[];
+      pw: number;
+      ph: number;
+      selected: number[];
+    }
+  | {
+      status: "adding";
+      list: CandidatePreview[];
+      pw: number;
+      ph: number;
+      selected: number[];
+    };
 
 export function Editor() {
   const { t, formatNumber } = useI18n();
@@ -86,6 +115,11 @@ export function Editor() {
   const [comparePos, setComparePos] = useState(50);
   const [historyTick, setHistoryTick] = useState(0);
   const [renderMs, setRenderMs] = useState<number | null>(null);
+  const [step, setStep] = useState<Step>("walls");
+  const [advanced, setAdvanced] = useAdvanced();
+  /** Where to show the "tap the wall" hint (image coordinates); null once the user has tapped. */
+  const [hint, setHint] = useState<{ x: number; y: number } | null>(null);
+  const hintDone = useRef(false);
   const [lightEst, setLightEst] = useState<LightingEstimate | null>(null);
   const [lightMode, setLightMode] = useState<LightMode>("photo");
   const lighting = useMemo(() => (lightEst ? lightingGains(lightEst, lightMode) : undefined), [lightEst, lightMode]);
@@ -96,7 +130,12 @@ export function Editor() {
   const [segAttempt, setSegAttempt] = useState(0);
   const [smartMode, setSmartMode] = useState<BrushMode>("add");
   const sessionRef = useRef<SmartSession | null>(null);
-  const [session, setSession] = useState<{ points: PromptPoint[]; hypotheses: Hypothesis[]; chosen: number | null; merged?: number } | null>(null);
+  const [session, setSession] = useState<{
+    points: PromptPoint[];
+    hypotheses: Hypothesis[];
+    chosen: number | null;
+    merged?: number;
+  } | null>(null);
   const [smartBusy, setSmartBusy] = useState(0);
   const pendingDecode = useRef(false);
   const [pick, setPick] = useState<PickState | null>(null);
@@ -193,6 +232,10 @@ export function Editor() {
         // "Back" (button or edge swipe) returns to the upload screen instead of leaving the editor.
         if (!window.history.state?.cvPhoto) window.history.pushState({ ...window.history.state, cvPhoto: true }, "");
         setTool("smart");
+        // A continued session with painted walls opens on the colour step.
+        setStep(list.some((x) => x.coverage > 0) ? "colors" : "walls");
+        setHint(null);
+        hintDone.current = false;
         setPick(null);
         sessionRef.current = null;
         setSession(null);
@@ -258,7 +301,12 @@ export function Editor() {
   }, [doc, image, surfaces, selectedId, historyTick, lightMode]);
 
   // Offer to continue the last session on the upload screen.
-  const [resume, setResume] = useState<{ url: string; savedAt: number; image: Blob; state: SavedSession | null } | null>(null);
+  const [resume, setResume] = useState<{
+    url: string;
+    savedAt: number;
+    image: Blob;
+    state: SavedSession | null;
+  } | null>(null);
   useEffect(() => {
     if (image) return;
     let url: string | null = null;
@@ -312,7 +360,11 @@ export function Editor() {
 
   const pickPaint = (paint: PaintColor) => {
     if (!selectedId) return;
-    patchSurface(selectedId, { hex: paint.hex, lab: paint.lab, paintId: paint.id });
+    patchSurface(selectedId, {
+      hex: paint.hex,
+      lab: paint.lab,
+      paintId: paint.id,
+    });
   };
 
   const pickCustom = (hex: string) => {
@@ -325,16 +377,21 @@ export function Editor() {
     if (!paints.length) return;
     const order = [...surfacesRef.current].sort((a, b) => Number(b.coverage > 0) - Number(a.coverage > 0));
     const byId = new Map(order.map((s, i) => [s.id, paints[i % paints.length]!]));
-    setSurfaces((list) => list.map((s) => {
-      const p = byId.get(s.id);
-      return p ? { ...s, hex: p.hex, lab: p.lab, paintId: p.id } : s;
-    }));
+    setSurfaces((list) =>
+      list.map((s) => {
+        const p = byId.get(s.id);
+        return p ? { ...s, hex: p.hex, lab: p.lab, paintId: p.id } : s;
+      }),
+    );
   };
 
   /** Average colour of the original photo around a point (5×5). */
   const sampleColor = (x: number, y: number): string | null => {
     if (!image) return null;
-    let r = 0, g = 0, b = 0, n = 0;
+    let r = 0,
+      g = 0,
+      b = 0,
+      n = 0;
     for (let dy = -2; dy <= 2; dy++)
       for (let dx = -2; dx <= 2; dx++) {
         const px = Math.round(x) + dx;
@@ -414,7 +471,9 @@ export function Editor() {
       if (!raw) return;
       const before = raw.slice();
       const base = s.base;
-      if (s.polarity === "add") for (let i = 0; i < raw.length; i++) raw[i] = Math.max(base[i]!, m[i]!);
+      const others = s.others;
+      if (s.polarity === "add" && others) for (let i = 0; i < raw.length; i++) raw[i] = Math.max(base[i]!, Math.min(m[i]!, 255 - others[i]!));
+      else if (s.polarity === "add") for (let i = 0; i < raw.length; i++) raw[i] = Math.max(base[i]!, m[i]!);
       // Removal is generous at the soft edge so no faint outline is left behind.
       else for (let i = 0; i < raw.length; i++) raw[i] = Math.min(base[i]!, Math.max(0, 255 - 2 * m[i]!));
       const rect = diffRect(before, raw, doc.width, doc.height);
@@ -452,6 +511,8 @@ export function Editor() {
     if (!client || !doc) return;
     endSession();
     setCompare(false);
+    hintDone.current = true;
+    setHint(null);
     setAutoBusy(true);
     try {
       await client.waitForUnderstanding(20_000);
@@ -469,12 +530,22 @@ export function Editor() {
         const raw = doc.rawMask(surface.id)!;
         const before = raw.slice();
         raw.set(f.mask);
-        doc.history.record(surface.id, before, raw, doc.width, { x: 0, y: 0, w: doc.width, h: doc.height });
+        doc.history.record(surface.id, before, raw, doc.width, {
+          x: 0,
+          y: 0,
+          w: doc.width,
+          h: doc.height,
+        });
         const { stats, coverage, mask } = doc.refresh(surface.id, surface.feather);
         stageRef.current?.uploadMask(surface.id, mask);
         const name = t(f.kind === "wall" ? "kinds.walls" : "kinds.ceiling");
         const paint = f.kind === "ceiling" ? getColor("ral-classic:RAL 9010") : undefined;
-        const patch: Partial<Surface> = { stats, coverage, name, ...(paint ? { hex: paint.hex, lab: paint.lab, paintId: paint.id } : {}) };
+        const patch: Partial<Surface> = {
+          stats,
+          coverage,
+          name,
+          ...(paint ? { hex: paint.hex, lab: paint.lab, paintId: paint.id } : {}),
+        };
         if (reuse) patchSurface(reuse.id, patch);
         else added.push({ ...surface, ...patch });
         if (f.kind === "wall") firstId ??= surface.id;
@@ -512,7 +583,12 @@ export function Editor() {
         s.hypotheses = res.hypotheses;
         s.chosen = res.chosen;
         s.provisional = !res.usedSurfaces;
-        setSession({ points: [...s.points], hypotheses: res.hypotheses, chosen: res.chosen, merged: res.merged });
+        setSession({
+          points: [...s.points],
+          hypotheses: res.hypotheses,
+          chosen: res.chosen,
+          merged: res.merged,
+        });
         if (res.kind && s.points.length === 1 && s.polarity === "add") {
           nameSurface(s.surfaceId, res.kind);
           if (res.kind === "furniture" || res.kind === "window" || res.kind === "outdoor" || res.kind === "floor")
@@ -552,23 +628,106 @@ export function Editor() {
     if (seg.phase === "ready" && pendingDecode.current) void runSmartDecode();
   }, [seg.phase, runSmartDecode]);
 
+  /** The visible surface under a point (topmost), if any. */
+  const surfaceAt = useCallback(
+    (p: { x: number; y: number }): string | null => {
+      if (!doc) return null;
+      const x = Math.min(doc.width - 1, Math.max(0, Math.floor(p.x)));
+      const y = Math.min(doc.height - 1, Math.max(0, Math.floor(p.y)));
+      const list = surfacesRef.current;
+      for (let i = list.length - 1; i >= 0; i--) {
+        const s = list[i]!;
+        if (!s.visible || s.coverage === 0) continue;
+        if ((doc.displayMask(s.id)?.[y * doc.width + x] ?? 0) > 127) return s.id;
+      }
+      return null;
+    },
+    [doc],
+  );
+
   const onSmartTap = useCallback(
     (p: { x: number; y: number }) => {
       if (!doc || !selectedId) return;
+      hintDone.current = true;
+      setHint(null);
       let s = sessionRef.current;
-      if (!s || s.surfaceId !== selectedId) {
-        const raw = doc.rawMask(selectedId);
+      let surfaceId = selectedId;
+      if (!s && smartMode === "add") {
+        // Easy mode: tapping a wall that is already painted selects it; tapping a
+        // new wall makes a new surface, so every wall can get its own colour.
+        const hit = surfaceAt(p);
+        if (hit) {
+          setSelectedId(hit);
+          return;
+        }
+        const current = surfacesRef.current.find((x) => x.id === selectedId);
+        if (current && current.coverage > 0) {
+          const fresh = makeSurface(doc);
+          stageRef.current?.uploadMask(fresh.id, doc.displayMask(fresh.id)!);
+          setSurfaces((l) => [...l, fresh]);
+          setSelectedId(fresh.id);
+          surfaceId = fresh.id;
+        }
+      }
+      if (!s || s.surfaceId !== surfaceId) {
+        const raw = doc.rawMask(surfaceId);
         if (!raw) return;
-        s = { surfaceId: selectedId, base: raw.slice(), points: [], polarity: smartMode, hypotheses: [], chosen: null, provisional: false, merge: true };
+        let others: Uint8Array | null = null;
+        for (const o of surfacesRef.current) {
+          const om = o.id !== surfaceId && o.coverage > 0 ? doc.rawMask(o.id) : undefined;
+          if (!om) continue;
+          others ??= new Uint8Array(raw.length);
+          for (let i = 0; i < om.length; i++) if (om[i]! > others[i]!) others[i] = om[i]!;
+        }
+        s = {
+          surfaceId,
+          base: raw.slice(),
+          points: [],
+          polarity: smartMode,
+          hypotheses: [],
+          chosen: null,
+          provisional: false,
+          merge: true,
+          others,
+        };
         sessionRef.current = s;
       }
-      s.points.push({ x: p.x, y: p.y, label: smartMode === s.polarity ? 1 : 0 });
+      s.points.push({
+        x: p.x,
+        y: p.y,
+        label: smartMode === s.polarity ? 1 : 0,
+      });
       s.chosen = null;
-      setSession({ points: [...s.points], hypotheses: s.hypotheses, chosen: null });
+      setSession({
+        points: [...s.points],
+        hypotheses: s.hypotheses,
+        chosen: null,
+      });
       void runSmartDecode();
     },
-    [doc, selectedId, smartMode, runSmartDecode],
+    [doc, selectedId, smartMode, runSmartDecode, surfaceAt, makeSurface],
   );
+
+  /** In the colour and share steps a tap chooses the wall to colour. */
+  const onSurfaceTap = (p: { x: number; y: number }) => {
+    const hit = surfaceAt(p);
+    if (hit) setSelectedId(hit);
+    else setNotice(t("steps.noSurfaceHere"));
+  };
+
+  // Show where to tap once the AI knows where the walls are.
+  useEffect(() => {
+    const client = segRef.current;
+    if (seg.phase !== "ready" || !client || !image) return;
+    let cancelled = false;
+    void client.wallHint(10_000).then((h) => {
+      if (cancelled || hintDone.current) return;
+      setHint(h ? { x: h.fx * image.width, y: h.fy * image.height } : { x: image.width / 2, y: image.height / 2 });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [seg.phase, image]);
 
   const changeVariant = (dir: -1 | 1) => {
     const s = sessionRef.current;
@@ -594,7 +753,13 @@ export function Editor() {
     try {
       const r = await client.candidates();
       for (const c of r.list) stageRef.current?.uploadMask(`cand:${c.id}`, c.preview, r.previewW, r.previewH);
-      setPick({ status: "ready", list: r.list, pw: r.previewW, ph: r.previewH, selected: [] });
+      setPick({
+        status: "ready",
+        list: r.list,
+        pw: r.previewW,
+        ph: r.previewH,
+        selected: [],
+      });
     } catch {
       setPick(null);
       setNotice(t("ai.tapFailed"));
@@ -631,7 +796,12 @@ export function Editor() {
         const raw = doc.rawMask(surface.id)!;
         const before = raw.slice();
         raw.set(m.mask);
-        doc.history.record(surface.id, before, raw, doc.width, { x: 0, y: 0, w: doc.width, h: doc.height });
+        doc.history.record(surface.id, before, raw, doc.width, {
+          x: 0,
+          y: 0,
+          w: doc.width,
+          h: doc.height,
+        });
         const { stats, coverage, mask } = doc.refresh(surface.id, surface.feather);
         stageRef.current?.uploadMask(surface.id, mask);
         if (reuse) patchSurface(reuse.id, { stats, coverage });
@@ -725,7 +895,7 @@ export function Editor() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `colorvision-${new Date().toISOString().slice(0, 10)}.jpg`;
+    a.download = `${brandSlug()}-${new Date().toISOString().slice(0, 10)}.jpg`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -753,7 +923,13 @@ export function Editor() {
           endSession();
           return;
         }
-        const map: Record<string, Tool> = { s: "smart", b: "brush", e: "eraser", l: "lasso", h: "pan" };
+        const map: Record<string, Tool> = {
+          s: "smart",
+          b: "brush",
+          e: "eraser",
+          l: "lasso",
+          h: "pan",
+        };
         const tl = map[k];
         if (tl) setTool(tl);
         else if (k === "[") setBrushSize((s) => Math.max(4, Math.round(s / 1.2)));
@@ -764,6 +940,13 @@ export function Editor() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [doc, undo, redo, endSession]);
+
+  const goStep = (next: Step) => {
+    endSession();
+    if (pick) cancelPick();
+    setEyedropper(false);
+    setStep(next);
+  };
 
   /* ---------- render ---------- */
 
@@ -793,6 +976,34 @@ export function Editor() {
   const selected = surfaces.find((s) => s.id === selectedId) ?? null;
   const aiReady = seg.phase === "ready";
   const smartAvailable = seg.phase !== "error";
+  const anyPainted = surfaces.some((s) => s.coverage > 0);
+  const showHint = !!hint && step === "walls" && tool === "smart" && aiReady && !session && !pick && !autoBusy && !anyPainted;
+
+  const toolbarProps = {
+    tool,
+    onTool: setTool,
+    brushSize,
+    onBrushSize: setBrushSize,
+    hardness,
+    onHardness: setHardness,
+    lassoMode,
+    onLassoMode: setLassoMode,
+    canUndo: doc.history.canUndo,
+    canRedo: doc.history.canRedo,
+    onUndo: undo,
+    onRedo: redo,
+    showMask,
+    onShowMask: setShowMask,
+    compare,
+    onCompare: setCompare,
+    smartMode,
+    onSmartMode: (m: BrushMode) => {
+      setSmartMode(m);
+      // Switching mode on an untouched session starts a new one with the new polarity.
+      if (sessionRef.current && sessionRef.current.points.length === 0) endSession();
+    },
+    smartAvailable,
+  };
 
   const pickOverlays: OverlayInput[] | undefined =
     pick && pick.status !== "loading"
@@ -855,10 +1066,22 @@ export function Editor() {
     const pos = order.findIndex((h) => h.index === session.chosen);
     bottomBar = (
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => changeVariant(-1)} disabled={pos <= 0 || smartBusy > 0} data-testid="variant-smaller" className={`${pill} bg-white disabled:opacity-50`}>
+        <button
+          type="button"
+          onClick={() => changeVariant(-1)}
+          disabled={pos <= 0 || smartBusy > 0}
+          data-testid="variant-smaller"
+          className={`${pill} bg-white disabled:opacity-50`}
+        >
           <MinusIcon width={18} height={18} /> {t("editor.smaller")}
         </button>
-        <button type="button" onClick={() => changeVariant(1)} disabled={pos < 0 || pos >= order.length - 1 || smartBusy > 0} data-testid="variant-larger" className={`${pill} bg-white disabled:opacity-50`}>
+        <button
+          type="button"
+          onClick={() => changeVariant(1)}
+          disabled={pos < 0 || pos >= order.length - 1 || smartBusy > 0}
+          data-testid="variant-larger"
+          className={`${pill} bg-white disabled:opacity-50`}
+        >
           <PlusIcon width={18} height={18} /> {t("editor.larger")}
         </button>
         <button type="button" onClick={endSession} data-testid="smart-done" className={`${pill} bg-brand-600 text-white`}>
@@ -866,7 +1089,16 @@ export function Editor() {
         </button>
       </div>
     );
-  } else if (tool === "smart" && aiReady && !session && !autoBusy) {
+  } else if (step === "walls" && tool === "smart" && aiReady && !session && !autoBusy && anyPainted) {
+    bottomBar = (
+      <button type="button" onClick={() => goStep("colors")} data-testid="next-colors-floating" className={`${pill} bg-brand-600 text-white`}>
+        {t("steps.nextColors")}
+        <span aria-hidden className="rtl:-scale-x-100">
+          →
+        </span>
+      </button>
+    );
+  } else if (step === "walls" && tool === "smart" && aiReady && !session && !autoBusy) {
     bottomBar = (
       <div className="flex flex-wrap items-center justify-center gap-2">
         <button type="button" onClick={paintAllWalls} data-testid="paint-all-walls-floating" className={`${pill} bg-brand-600 text-white`}>
@@ -894,9 +1126,10 @@ export function Editor() {
         {notice}
       </span>
     );
-  else if (pick && pick.status !== "loading") topChip = <span className="inline-flex rounded-full bg-black/65 px-3 py-1.5 text-xs font-semibold text-white shadow">{t("editor.detectHint")}</span>;
+  else if (pick && pick.status !== "loading")
+    topChip = <span className="inline-flex rounded-full bg-black/65 px-3 py-1.5 text-xs font-semibold text-white shadow">{t("editor.detectHint")}</span>;
   else if (seg.phase !== "ready" && seg.phase !== "idle" && smartAvailable) topChip = <AiStatus status={seg} compact />;
-  else if (tool === "smart" && aiReady && !session && selected?.coverage === 0) topChip = <AiStatus status={seg} compact />;
+  else if (step === "walls" && tool === "smart" && aiReady && !session && selected?.coverage === 0 && !showHint) topChip = <AiStatus status={seg} compact />;
 
   return (
     <div className="lg:grid lg:h-[calc(100dvh-3.5rem)] lg:grid-cols-[minmax(0,1fr)_400px]">
@@ -924,143 +1157,214 @@ export function Editor() {
           }}
           lighting={lighting}
           overlays={pickOverlays}
-          tapMode={!!pick || eyedropper}
-          onTap={eyedropper ? onEyedrop : pick ? onPickTap : onSmartTap}
-          markers={tool === "smart" && !pick ? session?.points : undefined}
+          tapMode={!!pick || eyedropper || step !== "walls"}
+          onTap={eyedropper ? onEyedrop : pick ? onPickTap : step !== "walls" ? onSurfaceTap : onSmartTap}
+          markers={tool === "smart" && !pick && step === "walls" ? session?.points : undefined}
+          hint={showHint && hint ? { ...hint, label: t("steps.tapHint") } : null}
           busy={smartBusy > 0}
           bottomBar={bottomBar}
           topChip={topChip}
         />
       </div>
 
-      <aside className="flex flex-col gap-6 border-line bg-surface p-4 lg:overflow-y-auto lg:border-s" aria-label={t("editor.title")}>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
+      <aside className="flex flex-col gap-5 border-line bg-surface p-4 text-base lg:overflow-y-auto lg:border-s" aria-label={t("editor.title")}>
+        <StepNav step={step} onStep={goStep} done={{ walls: anyPainted, colors: anyPainted && step === "share" }} />
+
+        {step === "walls" && (
+          <>
+            <p className="text-base font-medium">{t("steps.wallsHint")}</p>
+            <AiStatus status={seg} onRetry={() => setSegAttempt((n) => n + 1)} />
+            {smartAvailable && (
+              <button
+                type="button"
+                onClick={paintAllWalls}
+                disabled={!aiReady || autoBusy || !!pick}
+                data-testid="paint-all-walls"
+                className="inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-brand-600 px-4 text-lg font-bold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+              >
+                {autoBusy ? <SpinnerIcon width={22} height={22} /> : <SparkleIcon width={22} height={22} />}
+                {autoBusy ? t("ai.findingWalls") : t("ai.paintAllWalls")}
+              </button>
+            )}
+            <Toolbar part="smart" {...toolbarProps} />
+            {selected && selected.coverage === 0 && tool !== "smart" && (
+              <p className="rounded-xl bg-brand-50 p-3 text-sm text-brand-700" role="status">
+                {t("editor.emptyMaskHint")}
+              </p>
+            )}
+            <SurfacesPanel
+              surfaces={surfaces}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onAdd={addSurface}
+              onRename={(id, name) => patchSurface(id, { name })}
+              onToggleVisible={(id) =>
+                patchSurface(id, {
+                  visible: !surfaces.find((s) => s.id === id)?.visible,
+                })
+              }
+              onDelete={deleteSurface}
+            />
+            <Toolbar part="actions" {...toolbarProps} />
+            <Advanced open={advanced} onToggle={setAdvanced} id="walls-advanced">
+              <Toolbar part="tools" {...toolbarProps} />
+              {smartAvailable && (
+                <button
+                  type="button"
+                  onClick={startDetect}
+                  disabled={!aiReady || !!pick}
+                  data-testid="detect"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-brand-600 bg-white px-4 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                >
+                  {pick?.status === "loading" ? <SpinnerIcon width={18} height={18} /> : <SparkleIcon width={18} height={18} />}
+                  {pick?.status === "loading" ? t("editor.detecting") : t("editor.detect")}
+                </button>
+              )}
+              {selected && (
+                <>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="flex justify-between font-medium">
+                      {t("editor.edgeSoftness")}
+                      <span className="tabular-nums text-muted">{formatNumber(selected.feather)} px</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={3}
+                      step={1}
+                      value={selected.feather}
+                      onChange={(e) => refreshSurface(selected.id, Number(e.target.value))}
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(seg.phase === "ready" || seg.phase === "analyzing") && (
+                      <button
+                        type="button"
+                        onClick={() => refineSurface(selected.id)}
+                        disabled={refining || selected.coverage === 0}
+                        data-testid="refine"
+                        className="min-h-11 rounded-lg border border-brand-600 bg-white px-4 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                      >
+                        {refining ? t("editor.refining") : t("editor.refine")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => clearMask(selected.id)}
+                      className="min-h-11 rounded-lg border border-line bg-white px-4 text-sm hover:bg-red-50 hover:text-red-700"
+                    >
+                      {t("editor.clearMask")}
+                    </button>
+                  </div>
+                </>
+              )}
+              {renderMs !== null && (
+                <span className="text-xs tabular-nums text-muted" data-testid="render-time">
+                  {t("editor.renderTime", {
+                    ms: formatNumber(renderMs, { maximumFractionDigits: 1 }),
+                  })}
+                </span>
+              )}
+            </Advanced>
+            <NextButton onClick={() => goStep("colors")} emphasis={anyPainted} testId="next-colors">
+              {t("steps.nextColors")}
+            </NextButton>
+          </>
+        )}
+
+        {step === "colors" && selected && (
+          <>
+            <p className="text-base font-medium">{t("steps.colorsHint")}</p>
+            <SurfacesPanel
+              surfaces={surfaces}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onRename={(id, name) => patchSurface(id, { name })}
+              onToggleVisible={(id) =>
+                patchSurface(id, {
+                  visible: !surfaces.find((s) => s.id === id)?.visible,
+                })
+              }
+              title={t("steps.whichWall")}
+            />
+            <ColorPanel
+              surface={selected}
+              surfaceCount={surfaces.length}
+              tab={pickerTab}
+              onTab={setPickerTab}
+              onPick={pickPaint}
+              onCustom={pickCustom}
+              onApplyPalette={applyPalette}
+              picked={picked}
+              onPicked={setPicked}
+              eyedropper={eyedropper}
+              onEyedropper={(on) => {
+                setEyedropper(on);
+                if (on) {
+                  endSession();
+                  setCompare(false);
+                }
+              }}
+              photoColors={photoColors}
+              onRemoveColor={() =>
+                patchSurface(selected.id, {
+                  hex: null,
+                  lab: null,
+                  paintId: null,
+                })
+              }
+              onFinish={(finish: Finish) => patchSurface(selected.id, { finish })}
+              onBrightness={(brightness) => patchSurface(selected.id, { brightness })}
+              onCleanup={(cleanup) => patchSurface(selected.id, { cleanup })}
+              advanced={advanced}
+              onAdvanced={setAdvanced}
+            />
+            <LightSwitch value={lightMode} onChange={setLightMode} />
+            <Toolbar part="actions" {...toolbarProps} />
+            <NextButton onClick={() => goStep("share")} emphasis={anyPainted} testId="next-share">
+              {t("steps.nextShare")}
+            </NextButton>
+          </>
+        )}
+
+        {step === "share" && (
+          <SharePanel
+            surfaces={surfaces}
+            onDownload={download}
+            onEdit={(id) => {
+              setSelectedId(id);
+              goStep("colors");
+            }}
+            onNewPhoto={() => {
               if (window.history.state?.cvPhoto) window.history.back();
               else closePhoto();
             }}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-line px-3 text-sm font-medium hover:bg-black/5"
-          >
-            <ImageIcon width={18} height={18} /> {t("editor.newPhoto")}
-          </button>
-          <button
-            type="button"
-            onClick={download}
-            data-testid="download"
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700"
-          >
-            <DownloadIcon width={18} height={18} /> {t("editor.download")}
-          </button>
-          {renderMs !== null && (
-            <span className="ms-auto text-xs tabular-nums text-muted" data-testid="render-time">
-              {t("editor.renderTime", { ms: formatNumber(renderMs, { maximumFractionDigits: 1 }) })}
-            </span>
-          )}
-        </div>
-
-        <LightSwitch value={lightMode} onChange={setLightMode} />
-
-        <Toolbar
-          tool={tool}
-          onTool={setTool}
-          brushSize={brushSize}
-          onBrushSize={setBrushSize}
-          hardness={hardness}
-          onHardness={setHardness}
-          lassoMode={lassoMode}
-          onLassoMode={setLassoMode}
-          canUndo={doc.history.canUndo}
-          canRedo={doc.history.canRedo}
-          onUndo={undo}
-          onRedo={redo}
-          showMask={showMask}
-          onShowMask={setShowMask}
-          compare={compare}
-          onCompare={setCompare}
-          smartMode={smartMode}
-          onSmartMode={(m) => {
-            setSmartMode(m);
-            // Switching mode on an untouched session starts a new one with the new polarity.
-            if (sessionRef.current && sessionRef.current.points.length === 0) endSession();
-          }}
-          smartAvailable={smartAvailable}
-        />
-
-        <AiStatus status={seg} onRetry={() => setSegAttempt((n) => n + 1)} />
-
-        {smartAvailable && (
-          <button
-            type="button"
-            onClick={paintAllWalls}
-            disabled={!aiReady || autoBusy || !!pick}
-            data-testid="paint-all-walls"
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-base font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-          >
-            {autoBusy ? <SpinnerIcon width={20} height={20} /> : <SparkleIcon width={20} height={20} />}
-            {autoBusy ? t("ai.findingWalls") : t("ai.paintAllWalls")}
-          </button>
-        )}
-
-        {smartAvailable && (
-          <button
-            type="button"
-            onClick={startDetect}
-            disabled={!aiReady || !!pick}
-            data-testid="detect"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-brand-600 bg-white px-4 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-          >
-            {pick?.status === "loading" ? <SpinnerIcon width={18} height={18} /> : <SparkleIcon width={18} height={18} />}
-            {pick?.status === "loading" ? t("editor.detecting") : t("editor.detect")}
-          </button>
-        )}
-
-        {selected && selected.coverage === 0 && tool !== "smart" && (
-          <p className="rounded-xl bg-brand-50 p-3 text-sm text-brand-700" role="status">
-            {t("editor.emptyMaskHint")}
-          </p>
-        )}
-
-        <SurfacesPanel
-          surfaces={surfaces}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onAdd={addSurface}
-          onRename={(id, name) => patchSurface(id, { name })}
-          onToggleVisible={(id) => patchSurface(id, { visible: !surfaces.find((s) => s.id === id)?.visible })}
-          onDelete={deleteSurface}
-        />
-
-        {selected && (
-          <ColorPanel
-            surface={selected}
-            surfaceCount={surfaces.length}
-            tab={pickerTab}
-            onTab={setPickerTab}
-            onPick={pickPaint}
-            onCustom={pickCustom}
-            onApplyPalette={applyPalette}
-            picked={picked}
-            onPicked={setPicked}
-            eyedropper={eyedropper}
-            onEyedropper={(on) => {
-              setEyedropper(on);
-              if (on) {
-                endSession();
-                setCompare(false);
-              }
-            }}
-            photoColors={photoColors}
-            onRemoveColor={() => patchSurface(selected.id, { hex: null, lab: null, paintId: null })}
-            onFinish={(finish: Finish) => patchSurface(selected.id, { finish })}
-            onBrightness={(brightness) => patchSurface(selected.id, { brightness })}
-            onCleanup={(cleanup) => patchSurface(selected.id, { cleanup })}
-            onFeather={(f) => refreshSurface(selected.id, f)}
-            onClearMask={() => clearMask(selected.id)}
-            onRefine={seg.phase === "ready" || seg.phase === "analyzing" ? () => refineSurface(selected.id) : undefined}
-            refining={refining}
+            lightSwitch={<LightSwitch value={lightMode} onChange={setLightMode} />}
+            compareButton={<Toolbar part="actions" {...toolbarProps} />}
           />
+        )}
+
+        {step !== "share" && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.history.state?.cvPhoto) window.history.back();
+                else closePhoto();
+              }}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line px-4 text-sm font-medium hover:bg-black/5"
+            >
+              <ImageIcon width={18} height={18} /> {t("editor.newPhoto")}
+            </button>
+            <button
+              type="button"
+              onClick={download}
+              data-testid="download"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <DownloadIcon width={18} height={18} /> {t("editor.download")}
+            </button>
+          </div>
         )}
       </aside>
     </div>

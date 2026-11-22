@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { collectErrors, dist, pickPaint, pixel, toScreen } from "./helpers";
+import { collectErrors, dist, goStep, openAdvanced, pickPaint, pixel, selectTool, toScreen } from "./helpers";
 
 const SAMPLE = path.join(process.cwd(), "public", "samples", "room.jpg");
 
@@ -53,9 +53,12 @@ test("upload → paint wall → change color → compare → undo → download",
   await page.goto("/en/editor");
   await page.getByTestId("file-input").setInputFiles(SAMPLE);
   await expect(page.getByTestId("render-canvas")).toBeVisible();
-  // Smart select (AI) is the default tool; this test covers the manual brush.
+  // Easy mode: three steps, the walls step first; photo tips were shown before.
+  await expect(page.getByTestId("step-walls")).toHaveAttribute("aria-current", "step");
+  // Smart select (AI) is the default tool; this test covers the manual brush (under "More tools").
+  await openAdvanced(page);
   await expect(page.getByTestId("tool-smart")).toHaveAttribute("aria-checked", "true");
-  await page.getByTestId("tool-brush").click();
+  await selectTool(page, "brush");
   await expect(page.getByTestId("tool-brush")).toHaveAttribute("aria-checked", "true");
   // Wait until the first frame is rendered.
   await expect.poll(async () => dist(await pixel(page, 700, 450), [0, 0, 0])).toBeGreaterThan(100);
@@ -105,7 +108,13 @@ test("upload → paint wall → change color → compare → undo → download",
 
   // Export.
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download").click()]);
-  expect(download.suggestedFilename()).toMatch(/^colorvision-.*\.jpg$/);
+  expect(download.suggestedFilename()).toMatch(/^alsy-paints-.*\.jpg$/);
+
+  // Last step: summary of the chosen colours and a big save button.
+  await goStep(page, "share");
+  await expect(page.getByTestId("color-summary")).toContainText("RAL 5004");
+  const [again] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download-big").click()]);
+  expect(again.suggestedFilename()).toMatch(/\.jpg$/);
 
   expect(errors).toEqual([]);
 });
@@ -120,7 +129,7 @@ test("lasso adds a polygon to the selection; multiple surfaces", async ({ page }
 
   await page.getByTestId("add-surface").click();
   await expect(page.getByTestId("surface-list").locator("li")).toHaveCount(2);
-  await page.getByTestId("tool-lasso").click();
+  await selectTool(page, "lasso");
   for (const [x, y] of [[40, 820], [380, 880], [380, 1000], [40, 1100]] as const) {
     const p = await toScreen(page, x, y);
     await page.mouse.click(p.x, p.y);

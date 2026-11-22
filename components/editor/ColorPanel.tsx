@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { colorName, getColor } from "@/lib/color/catalog";
 import type { Finish } from "@/lib/recolor/model";
 import { ColorPicker } from "./ColorPicker";
+import { Advanced } from "./Steps";
 import type { Surface } from "./types";
 
 type PickerProps = Omit<ComponentProps<typeof ColorPicker>, "surface">;
@@ -15,15 +16,12 @@ type Props = PickerProps & {
   onFinish: (f: Finish) => void;
   onBrightness: (v: number) => void;
   onCleanup: (on: boolean) => void;
-  onFeather: (v: number) => void;
-  onClearMask: () => void;
-  /** Edge-aware refinement (needs the AI worker); undefined hides the button. */
-  onRefine?: () => void;
-  refining?: boolean;
+  advanced: boolean;
+  onAdvanced: (open: boolean) => void;
 };
 
 export function ColorPanel(props: Props) {
-  const { surface, onRemoveColor, onFinish, onBrightness, onCleanup, onFeather, onClearMask, onRefine, refining, ...picker } = props;
+  const { surface, onRemoveColor, onFinish, onBrightness, onCleanup, advanced, onAdvanced, ...picker } = props;
   const { t, locale, formatNumber } = useI18n();
   const paint = surface.paintId ? getColor(surface.paintId) : undefined;
   const name = paint ? colorName(paint, locale) : undefined;
@@ -38,22 +36,17 @@ export function ColorPanel(props: Props) {
 
       <div className="flex items-center gap-3 rounded-xl border border-line bg-white p-3" data-testid="current-paint">
         <span
-          className="h-12 w-12 shrink-0 rounded-lg border border-black/10"
+          className="h-14 w-14 shrink-0 rounded-xl border border-black/10"
           style={{ background: surface.hex ?? "repeating-linear-gradient(45deg,#fff 0 4px,#ddd 4px 8px)" }}
           aria-hidden
         />
         <div className="min-w-0 flex-1">
           {surface.hex ? (
             <>
-              <p className="truncate font-semibold" dir="ltr" data-testid="current-code">
+              <p className="truncate text-lg font-bold" dir="ltr" data-testid="current-code">
                 {paint?.code ?? surface.hex}
               </p>
               {name && <p className="truncate text-sm text-muted">{name}</p>}
-              {paint && (
-                <p className="text-xs text-muted" dir="ltr">
-                  {paint.hex}
-                </p>
-              )}
             </>
           ) : (
             <p className="text-sm text-muted">{t("color.noPaint")}</p>
@@ -103,49 +96,26 @@ export function ColorPanel(props: Props) {
         </span>
       </label>
 
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="flex justify-between font-medium">
-          {t("color.brightness")}
-          <span className="tabular-nums text-muted" dir="ltr">
-            {surface.brightness >= 1 ? "+" : "−"}
-            {formatNumber(Math.abs(Math.round((surface.brightness - 1) * 100)))}%
+      <Advanced open={advanced} onToggle={onAdvanced} id="color-advanced">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="flex justify-between font-medium">
+            {t("color.brightness")}
+            <span className="tabular-nums text-muted" dir="ltr">
+              {surface.brightness >= 1 ? "+" : "−"}
+              {formatNumber(Math.abs(Math.round((surface.brightness - 1) * 100)))}%
+            </span>
           </span>
-        </span>
-        <input
-          type="range"
-          min={50}
-          max={150}
-          value={Math.round(surface.brightness * 100)}
-          onChange={(e) => onBrightness(Number(e.target.value) / 100)}
-          aria-describedby="brightness-hint"
-        />
-        <span id="brightness-hint" className="text-xs text-muted">{t("color.brightnessHint")}</span>
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="flex justify-between font-medium">
-          {t("editor.edgeSoftness")}
-          <span className="tabular-nums text-muted">{formatNumber(surface.feather)} px</span>
-        </span>
-        <input type="range" min={0} max={3} step={1} value={surface.feather} onChange={(e) => onFeather(Number(e.target.value))} />
-      </label>
-
-      <div className="flex flex-wrap gap-2">
-        {onRefine && (
-          <button
-            type="button"
-            onClick={onRefine}
-            disabled={refining || surface.coverage === 0}
-            data-testid="refine"
-            className="min-h-11 rounded-lg border border-brand-600 bg-white px-4 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-          >
-            {refining ? t("editor.refining") : t("editor.refine")}
-          </button>
-        )}
-        <button type="button" onClick={onClearMask} className="min-h-11 rounded-lg border border-line bg-white px-4 text-sm hover:bg-red-50 hover:text-red-700">
-          {t("editor.clearMask")}
-        </button>
-      </div>
+          <input
+            type="range"
+            min={50}
+            max={150}
+            value={Math.round(surface.brightness * 100)}
+            onChange={(e) => onBrightness(Number(e.target.value) / 100)}
+            aria-describedby="brightness-hint"
+          />
+          <span id="brightness-hint" className="text-xs text-muted">{t("color.brightnessHint")}</span>
+        </label>
+      </Advanced>
     </section>
   );
 }

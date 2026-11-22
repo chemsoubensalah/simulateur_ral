@@ -48,6 +48,8 @@ type Props = {
   /** Prompt points of the current smart selection. */
   markers?: { x: number; y: number; label: 0 | 1 }[];
   busy?: boolean;
+  /** Animated "tap here" hint, in image coordinates. */
+  hint?: { x: number; y: number; label: string } | null;
   /** Controls shown at the bottom / top of the photo. */
   bottomBar?: ReactNode;
   topChip?: ReactNode;
@@ -563,6 +565,24 @@ export function Stage(props: Props) {
               </>
             )}
           </svg>
+          {props.hint && !compare && (
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                left: `${(props.hint.x / image.width) * 100}%`,
+                top: `${(props.hint.y / image.height) * 100}%`,
+                transform: `translate(-50%, -50%) scale(${1 / view.scale})`,
+              }}
+              data-testid="tap-hint"
+              aria-hidden
+            >
+              <span className="absolute inset-0 animate-ping rounded-full bg-white/70" />
+              <span className="relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-brand-600/85 text-3xl shadow-lg">👆</span>
+              <span className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/75 px-3 py-1 text-sm font-semibold text-white shadow">
+                {props.hint.label}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

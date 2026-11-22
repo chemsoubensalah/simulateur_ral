@@ -27,6 +27,8 @@ type Props = {
   onSmartMode: (m: BrushMode) => void;
   /** Smart select is unavailable (AI failed): the tool is hidden. */
   smartAvailable: boolean;
+  /** "actions": undo / redo / before-after; "smart": add / remove for smart select; "tools": selection tools (advanced). */
+  part: "actions" | "smart" | "tools";
 };
 
 export function Toolbar(p: Props) {
@@ -38,6 +40,50 @@ export function Toolbar(p: Props) {
     { id: "lasso", label: t("editor.lasso"), icon: <LassoIcon />, key: "L" },
     { id: "pan", label: t("editor.pan"), icon: <PanIcon />, key: "H" },
   ];
+
+  if (p.part === "actions")
+    return (
+      <div className="flex w-fit rounded-xl border border-line bg-white p-1">
+        <IconButton label={t("editor.undo")} onClick={p.onUndo} disabled={!p.canUndo} testId="undo">
+          <UndoIcon className="rtl:-scale-x-100" />
+        </IconButton>
+        <IconButton label={t("editor.redo")} onClick={p.onRedo} disabled={!p.canRedo} testId="redo">
+          <RedoIcon className="rtl:-scale-x-100" />
+        </IconButton>
+        <span className="mx-1 w-px self-stretch bg-line" aria-hidden />
+        <IconButton label={t("editor.compare")} onClick={() => p.onCompare(!p.compare)} pressed={p.compare} testId="toggle-compare" wide>
+          <CompareIcon />
+          <span className="text-sm font-medium">{t("editor.compare")}</span>
+        </IconButton>
+      </div>
+    );
+
+  if (p.part === "smart") {
+    if (p.tool !== "smart" || p.compare) return null;
+    return (
+      <div className="flex flex-col gap-2">
+        <div role="radiogroup" aria-label={t("editor.smartMode")} className="flex w-fit rounded-xl border border-line bg-white p-1">
+          {(["add", "erase"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={p.smartMode === m}
+              data-testid={`smart-${m}`}
+              onClick={() => p.onSmartMode(m)}
+              className={`flex min-h-11 items-center gap-1.5 rounded-lg px-4 text-base font-medium ${
+                p.smartMode === m ? (m === "add" ? "bg-brand-600 text-white" : "bg-red-600 text-white") : "hover:bg-brand-50"
+              }`}
+            >
+              {m === "add" ? <PlusIcon width={18} height={18} /> : <MinusIcon width={18} height={18} />}
+              {m === "add" ? t("editor.smartAdd") : t("editor.smartRemove")}
+            </button>
+          ))}
+        </div>
+        <p className="text-sm text-muted">{t("editor.smartHint")}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -65,18 +111,8 @@ export function Toolbar(p: Props) {
         </div>
 
         <div className="flex rounded-xl border border-line bg-white p-1">
-          <IconButton label={t("editor.undo")} onClick={p.onUndo} disabled={!p.canUndo} testId="undo">
-            <UndoIcon className="rtl:-scale-x-100" />
-          </IconButton>
-          <IconButton label={t("editor.redo")} onClick={p.onRedo} disabled={!p.canRedo} testId="redo">
-            <RedoIcon className="rtl:-scale-x-100" />
-          </IconButton>
-          <span className="mx-1 w-px self-stretch bg-line" aria-hidden />
           <IconButton label={t("editor.showMask")} onClick={() => p.onShowMask(!p.showMask)} pressed={p.showMask} testId="toggle-mask">
             <MaskIcon />
-          </IconButton>
-          <IconButton label={t("editor.compare")} onClick={() => p.onCompare(!p.compare)} pressed={p.compare} testId="toggle-compare">
-            <CompareIcon />
           </IconButton>
         </div>
       </div>
@@ -93,30 +129,6 @@ export function Toolbar(p: Props) {
             <input type="range" min={0} max={100} value={Math.round(p.hardness * 100)} onChange={(e) => p.onHardness(Number(e.target.value) / 100)} className="w-full" />
             <span className="w-10 shrink-0 text-end tabular-nums text-muted" aria-hidden>{Math.round(p.hardness * 100)}</span>
           </label>
-        </div>
-      )}
-
-      {p.tool === "smart" && !p.compare && (
-        <div className="flex flex-col gap-2">
-          <div role="radiogroup" aria-label={t("editor.smartMode")} className="flex w-fit rounded-xl border border-line bg-white p-1">
-            {(["add", "erase"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={p.smartMode === m}
-                data-testid={`smart-${m}`}
-                onClick={() => p.onSmartMode(m)}
-                className={`flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium ${
-                  p.smartMode === m ? (m === "add" ? "bg-brand-600 text-white" : "bg-red-600 text-white") : "hover:bg-brand-50"
-                }`}
-              >
-                {m === "add" ? <PlusIcon width={18} height={18} /> : <MinusIcon width={18} height={18} />}
-                {m === "add" ? t("editor.smartAdd") : t("editor.smartRemove")}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted">{t("editor.smartHint")}</p>
         </div>
       )}
 
@@ -152,6 +164,7 @@ function IconButton({
   disabled,
   pressed,
   testId,
+  wide,
   children,
 }: {
   label: string;
@@ -159,6 +172,7 @@ function IconButton({
   disabled?: boolean;
   pressed?: boolean;
   testId?: string;
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -170,7 +184,7 @@ function IconButton({
       aria-pressed={pressed}
       title={label}
       data-testid={testId}
-      className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg disabled:opacity-35 ${
+      className={`flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg disabled:opacity-35 ${wide ? "px-3" : ""} ${
         pressed ? "bg-brand-100 text-brand-700" : "hover:bg-brand-50"
       }`}
     >

@@ -1,3 +1,4 @@
+import { wallHintPoint } from "@/lib/segmentation/sceneOps";
 import { describe, expect, it } from "vitest";
 import {
   bestMaskIndex,
@@ -162,5 +163,25 @@ describe("float16 transport", () => {
     expect(header).toEqual({ a: 1, s: "x" });
     expect(p.byteOffset % 2).toBe(0);
     expect([...new Uint16Array(p.buffer, p.byteOffset, 3)]).toEqual([1, 2, 65535]);
+  });
+});
+
+describe("wallHintPoint (where to show 'tap the wall')", () => {
+  const WALL = new Set([0]);
+  it("points into the middle of the largest wall area", () => {
+    const W = 40;
+    const H = 30;
+    const classes = new Uint8Array(W * H).fill(3); // floor
+    for (let y = 2; y < 20; y++) for (let x = 20; x < 38; x++) classes[y * W + x] = 0; // wall on the right
+    const p = wallHintPoint({ width: W, height: H, classes }, WALL)!;
+    expect(p.fx).toBeGreaterThan(0.5);
+    expect(p.fx).toBeLessThan(0.95);
+    expect(p.fy).toBeGreaterThan(0.05);
+    expect(p.fy).toBeLessThan(0.67);
+  });
+  it("returns null when no clear wall is visible", () => {
+    const classes = new Uint8Array(40 * 30).fill(3);
+    for (let i = 0; i < classes.length; i += 7) classes[i] = 0; // scattered wall pixels
+    expect(wallHintPoint({ width: 40, height: 30, classes }, WALL)).toBeNull();
   });
 });

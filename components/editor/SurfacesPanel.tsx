@@ -9,20 +9,24 @@ type Props = {
   surfaces: Surface[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAdd: () => void;
+  /** Omitted: no "add surface" button. */
+  onAdd?: () => void;
   onRename: (id: string, name: string) => void;
   onToggleVisible: (id: string) => void;
-  onDelete: (id: string) => void;
+  /** Omitted: surfaces cannot be deleted here. */
+  onDelete?: (id: string) => void;
+  title?: string;
 };
 
-export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename, onToggleVisible, onDelete }: Props) {
+export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename, onToggleVisible, onDelete, title }: Props) {
   const { t, formatNumber } = useI18n();
   return (
     <section aria-labelledby="surfaces-title" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <h2 id="surfaces-title" className="text-sm font-semibold uppercase tracking-wide text-muted">
-          {t("surfaces.title")}
+          {title ?? t("surfaces.title")}
         </h2>
+        {onAdd && (
         <button
           type="button"
           onClick={onAdd}
@@ -31,6 +35,7 @@ export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename,
         >
           <PlusIcon width={18} height={18} /> {t("surfaces.add")}
         </button>
+        )}
       </div>
       <ul className="flex flex-col gap-1.5" data-testid="surface-list">
         {surfaces.map((s) => {
@@ -45,7 +50,7 @@ export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename,
                 onClick={() => onSelect(s.id)}
                 aria-pressed={selected}
                 aria-label={t("surfaces.select", { name: s.name })}
-                className="h-9 w-9 shrink-0 rounded-lg border border-black/10"
+                className="h-11 w-11 shrink-0 rounded-lg border border-black/10"
                 style={{ background: s.hex ?? "repeating-linear-gradient(45deg,#fff 0 4px,#ddd 4px 8px)" }}
               />
               <div className="min-w-0 flex-1">
@@ -55,9 +60,9 @@ export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename,
                   onFocus={() => onSelect(s.id)}
                   aria-label={t("surfaces.rename")}
                   maxLength={40}
-                  className="w-full rounded-md bg-transparent px-1 text-sm font-medium focus:bg-white"
+                  className="w-full rounded-md bg-transparent px-1 text-base font-semibold focus:bg-white"
                 />
-                <p className="px-1 text-xs text-muted">
+                <p className="px-1 text-sm text-muted">
                   <span dir="ltr">{(s.paintId && getColor(s.paintId)?.code) ?? s.hex ?? t("surfaces.noColor")}</span> · {t("surfaces.coverage", { pct: formatNumber(s.coverage * 100, { maximumFractionDigits: 1 }) })}
                 </p>
               </div>
@@ -70,6 +75,7 @@ export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename,
               >
                 {s.visible ? <EyeIcon /> : <EyeOffIcon />}
               </button>
+              {onDelete && (
               <button
                 type="button"
                 onClick={() => onDelete(s.id)}
@@ -80,6 +86,7 @@ export function SurfacesPanel({ surfaces, selectedId, onSelect, onAdd, onRename,
               >
                 <TrashIcon />
               </button>
+              )}
             </li>
           );
         })}

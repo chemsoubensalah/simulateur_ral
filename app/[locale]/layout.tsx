@@ -6,6 +6,7 @@ import { dirFor, isLocale, locales } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 import { I18nProvider } from "@/lib/i18n/client";
 import { SiteHeader } from "@/components/SiteHeader";
+import { BRAND } from "@/lib/brand";
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
@@ -16,7 +17,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   if (!isLocale(locale)) return {};
   const m = getMessages(locale);
   return {
-    title: m.meta.title,
+    title: m.meta.title.replace("{brand}", BRAND.name),
+    applicationName: BRAND.name,
     description: m.meta.description,
     alternates: { languages: Object.fromEntries(locales.map((l) => [l, `/${l}`])) },
   };

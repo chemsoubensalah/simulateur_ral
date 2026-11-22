@@ -127,6 +127,23 @@ export function UploadPanel({ busy, error, resume, onFile, onSample }: Props) {
         />
       </div>
 
+      <div className="mt-6 rounded-2xl border border-line bg-white p-4" data-testid="photo-tips">
+        <h2 className="font-semibold">{t("upload.tipsTitle")}</h2>
+        <ul className="mt-2 flex flex-col gap-2 text-base">
+          {(["upload.tip1", "upload.tip2", "upload.tip3"] as const).map((k, i) => (
+            <li key={k} className="flex items-center gap-3">
+              <span aria-hidden className="text-xl">{["☀️", "↔️", "📱"][i]}</span>
+              {t(k)}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <p className="mt-4 flex items-start gap-2 text-sm text-muted" data-testid="privacy-note">
+        <span aria-hidden>🔒</span>
+        {t("upload.privacy")}
+      </p>
+
       {error && (
         <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-center text-sm text-red-800">
           {error}

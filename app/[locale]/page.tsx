@@ -24,7 +24,20 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           {m.home.start}
         </Link>
       </section>
-      <ul className="mt-14 grid gap-4 sm:grid-cols-3">
+      <section aria-labelledby="how-title" className="mt-12">
+        <h2 id="how-title" className="text-center text-xl font-bold">{m.home.howTitle}</h2>
+        <ol className="mt-5 grid gap-3 sm:grid-cols-3">
+          {[m.home.how1, m.home.how2, m.home.how3].map((text, i) => (
+            <li key={text} className="flex items-center gap-3 rounded-2xl bg-brand-50 p-4 text-lg font-semibold text-brand-700">
+              <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-lg text-white">
+                {new Intl.NumberFormat(locale === "ar" ? "ar-u-nu-latn" : locale).format(i + 1)}
+              </span>
+              {text}
+            </li>
+          ))}
+        </ol>
+      </section>
+      <ul className="mt-10 grid gap-4 sm:grid-cols-3">
         {features.map(([title, text]) => (
           <li key={title} className="rounded-2xl border border-line bg-surface p-5">
             <h2 className="font-semibold">{title}</h2>

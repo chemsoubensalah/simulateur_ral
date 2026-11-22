@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { collectErrors, dist, lassoSelect, pickPaint, pixel, tapImage } from "./helpers";
+import { collectErrors, dist, goStep, lassoSelect, pickPaint, pixel, tapImage } from "./helpers";
 
 // Back wall of public/samples/room.jpg, avoiding the sofa and the picture.
 const WALL_POLY = [[480, 260], [1040, 260], [1040, 600], [480, 600]] as const;
@@ -16,6 +16,7 @@ async function openRoomWithWall(page: import("@playwright/test").Page, path: str
 test("RAL chart: search in Arabic, apply a paint, the wall shows it", async ({ page }) => {
   const errors = collectErrors(page);
   await openRoomWithWall(page, "/ar/editor");
+  await goStep(page, "colors");
   await page.getByTestId("tab-catalog").click();
   await page.getByTestId("scope-ral-classic").click();
   await page.getByTestId("color-search").fill("أبيض نقي");
@@ -56,6 +57,7 @@ test("eyedropper → closest paints → use", async ({ page, isMobile }) => {
   const errors = collectErrors(page);
   await openRoomWithWall(page, "/en/editor");
   const sofa = await pixel(page, 950, 800);
+  await goStep(page, "colors");
   await page.getByTestId("tab-match").click();
   await page.getByTestId("eyedropper").click();
   await tapImage(page, 950, 800, !!isMobile);
@@ -64,7 +66,7 @@ test("eyedropper → closest paints → use", async ({ page, isMobile }) => {
   expect(dist(rgb, sofa)).toBeLessThan(12);
   const items = page.getByTestId("closest-list").locator("li");
   await expect(items).toHaveCount(6);
-  await expect(items.first()).toContainText(/ΔE₀₀/);
+  await expect(items.first()).toContainText(/Exact match|Very close|Close|Approximate/); // plain words, no ΔE numbers
   const use = items.first().locator("button");
   const code = (await use.getAttribute("data-testid"))!.replace(/^use-/, "");
   await use.click();
@@ -78,6 +80,7 @@ test("ideas: harmony palette and photo colours; apply palette to two surfaces", 
   await page.getByTestId("add-surface").click();
   await lassoSelect(page, [[40, 820], [380, 880], [380, 1000], [40, 1100]]);
 
+  await goStep(page, "colors");
   await page.getByTestId("tab-ideas").click();
   // Current colour + colours found in the photo (sofa, floor…).
   await expect.poll(() => page.getByTestId("idea-bases").locator("button").count()).toBeGreaterThanOrEqual(3);

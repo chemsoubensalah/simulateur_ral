@@ -6,7 +6,8 @@ import type { LoadedImage } from "@/lib/image/load";
 import { decodeHalf, unpackEnvelope } from "./f16";
 import { idbGet, idbPut } from "./idbCache";
 import type { Point } from "./postprocess";
-import type { SceneKind, SceneMap, SceneResponseHeader } from "./scene";
+import { WALL_CLASSES, type SceneKind, type SceneMap, type SceneResponseHeader } from "./scene";
+import { wallHintPoint } from "./sceneOps";
 import {
   SAM_MODEL_ID,
   type CandidatePreview,
@@ -375,6 +376,13 @@ export class SegmentationClient {
   /** Whether scene understanding reached the worker (walls/ceiling known). */
   get sceneReady(): boolean {
     return this.sceneSent;
+  }
+
+  /** Where on the photo (fractions of its size) a wall clearly is, for the "tap here" hint. */
+  async wallHint(timeoutMs: number): Promise<{ fx: number; fy: number } | null> {
+    if (!this.scenePromise) return null;
+    const scene = await Promise.race([this.scenePromise.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), timeoutMs))]);
+    return scene ? wallHintPoint(scene, WALL_CLASSES) : null;
   }
 
   /** Waits until surface analysis and scene understanding are done, or the timeout. */

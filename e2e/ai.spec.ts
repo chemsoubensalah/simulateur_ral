@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { collectErrors, coverageOf, dist, pixel, tapImage, toScreen, waitForAi } from "./helpers";
+import { collectErrors, coverageOf, dist, goStep, openAdvanced, pixel, selectTool, tapImage, toScreen, waitForAi } from "./helpers";
 
 // These tests run the real SlimSAM model in the browser (downloaded from the
 // Hugging Face Hub on first use), so they are slower than the others.
@@ -22,7 +22,8 @@ async function openRoom(page: import("@playwright/test").Page, path = "/en/edito
 test("tap a wall: AI selects exactly that wall; variants; done", async ({ page, isMobile }) => {
   const errors = collectErrors(page);
   await openRoom(page);
-  await expect(page.getByTestId("tool-smart")).toHaveAttribute("aria-checked", "true");
+  // First-time hint: an animated "tap the wall" marker where the AI found a wall.
+  await expect(page.getByTestId("tap-hint")).toBeVisible({ timeout: 30_000 });
 
   const before = {
     wall: await pixel(page, ...BACK_WALL),
@@ -59,6 +60,7 @@ test("tap a wall: AI selects exactly that wall; variants; done", async ({ page, 
 
   await page.getByTestId("smart-done").click();
   await expect(page.getByTestId("smart-done")).toBeHidden();
+  await expect(page.getByTestId("tap-hint")).toBeHidden();
   expect(errors).toEqual([]);
 });
 
@@ -82,6 +84,7 @@ test("detect all surfaces, pick two, add them as surfaces", async ({ page, isMob
   await openRoom(page, "/de/editor");
   const before = { ceiling: await pixel(page, ...CEILING), left: await pixel(page, ...LEFT_WALL), sofa: await pixel(page, ...SOFA) };
 
+  await openAdvanced(page);
   await page.getByTestId("detect").click();
   const add = page.getByTestId("add-detected");
   await expect(add).toBeVisible({ timeout: 60_000 });
@@ -117,7 +120,7 @@ test("snap edges: a sloppy brush stroke stops at the sofa", async ({ page, isMob
   test.skip(!!isMobile, "brush precision test runs on desktop");
   const errors = collectErrors(page);
   await openRoom(page);
-  await page.getByTestId("tool-brush").click();
+  await selectTool(page, "brush");
   // Brush of ~72 image px diameter; stroke centred 30 px above the sofa's top edge (y = 640).
   const box = (await page.getByTestId("render-canvas").boundingBox())!;
   await page.getByLabel("Brush size").fill(String(Math.round((72 * box.width) / 1600)));
@@ -171,5 +174,39 @@ test("paint all walls: one tap paints every wall and the ceiling separately", as
   const names = await page.getByTestId("surface-list").locator("input").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
   expect(names).toContain("الجدران");
   expect(names).toContain("السقف");
+  expect(errors).toEqual([]);
+});
+
+test("easy mode: each tapped wall becomes its own surface; in the colour step a tap chooses the wall", async ({ page, isMobile }) => {
+  const errors = collectErrors(page);
+  await openRoom(page);
+  await tapImage(page, ...BACK_WALL, !!isMobile);
+  await expect.poll(() => coverageOf(page), { timeout: 30_000 }).toBeGreaterThan(18);
+  const only = page.getByTestId("only-this-part");
+  if (await only.isVisible()) {
+    await only.click();
+    await expect.poll(() => coverageOf(page), { timeout: 30_000 }).toBeLessThan(32);
+  }
+  await page.getByTestId("smart-done").click();
+
+  // A tap on another wall starts a second surface (its own colour).
+  await tapImage(page, ...LEFT_WALL, !!isMobile);
+  const rows = page.getByTestId("surface-list").locator("li");
+  await expect(rows).toHaveCount(2);
+  await expect.poll(() => coverageOf(page, 1), { timeout: 30_000 }).toBeGreaterThan(3);
+  await page.getByTestId("smart-done").click();
+  // A tap on an already painted wall only selects it.
+  await tapImage(page, ...BACK_WALL, !!isMobile);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+
+  await goStep(page, "colors");
+  await tapImage(page, ...LEFT_WALL, !!isMobile);
+  await expect(rows.nth(1).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await tapImage(page, ...BACK_WALL, !!isMobile);
+  await expect(rows.nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  // The sofa is not selected: a friendly hint instead.
+  await tapImage(page, ...SOFA, !!isMobile);
+  await expect(page.getByTestId("stage").getByRole("alert")).toBeVisible();
   expect(errors).toEqual([]);
 });

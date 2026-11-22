@@ -451,15 +451,15 @@ function MatchTab({ surface, onPick, onCustom, picked, onPicked, eyedropper, onE
                   <span dir="ltr">{m.color.code}</span>
                   {name && <span className="text-muted"> · {name}</span>}
                 </p>
-                <p className="text-xs text-muted">
-                  {qualityLabel(m.deltaE)} · <span dir="ltr">ΔE₀₀ {formatNumber(m.deltaE, { maximumFractionDigits: 1 })}</span>
+                <p className="text-xs text-muted" title={`ΔE₀₀ ${formatNumber(m.deltaE, { maximumFractionDigits: 1 })}`}>
+                  {qualityLabel(m.deltaE)}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => onPick(m.color)}
                 data-testid={`use-${m.color.code}`}
-                className="min-h-9 shrink-0 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700"
+                className="min-h-11 shrink-0 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700"
               >
                 {t("color.use")}
               </button>

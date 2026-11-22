@@ -57,8 +57,29 @@ export async function waitForAi(page: Page) {
   await page.getByTestId("ai-status").and(page.locator('[data-phase="ready"]')).waitFor({ timeout: 120_000 });
 }
 
+/** Open one of the three steps (walls / colors / share). */
+export async function goStep(page: Page, step: "walls" | "colors" | "share") {
+  const button = page.getByTestId(`step-${step}`);
+  if ((await button.getAttribute("aria-current")) !== "step") await button.click();
+  await page.locator(`[data-testid="step-${step}"][aria-current="step"]`).waitFor();
+}
+
+/** Expand "More tools" (brushes, lasso, edges…). */
+export async function openAdvanced(page: Page) {
+  const toggle = page.getByTestId("advanced-toggle").first();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+}
+
+/** Choose a selection tool (in the walls step, under "More tools"). */
+export async function selectTool(page: Page, tool: "smart" | "brush" | "eraser" | "lasso" | "pan") {
+  await goStep(page, "walls");
+  await openAdvanced(page);
+  await page.getByTestId(`tool-${tool}`).click();
+}
+
 /** Choose a paint from the colour chart by its code (e.g. "RAL 5004" or "S 1050-Y90R"). */
 export async function pickPaint(page: Page, code: string) {
+  await goStep(page, "colors");
   await page.getByTestId("tab-catalog").click();
   await page.getByTestId(code.startsWith("RAL") ? "scope-ral-classic" : "scope-ncs").click();
   await page.getByTestId("color-search").fill(code);
@@ -67,7 +88,7 @@ export async function pickPaint(page: Page, code: string) {
 
 /** Select a polygon (image coordinates) on the current surface with the lasso. */
 export async function lassoSelect(page: Page, points: readonly (readonly [number, number])[]) {
-  await page.getByTestId("tool-lasso").click();
+  await selectTool(page, "lasso");
   for (const [x, y] of points) {
     const p = await toScreen(page, x, y);
     await page.mouse.click(p.x, p.y);
