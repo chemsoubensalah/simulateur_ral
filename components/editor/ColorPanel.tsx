@@ -2,7 +2,8 @@
 
 import type { ComponentProps } from "react";
 import { useI18n } from "@/lib/i18n/client";
-import { colorName, getColor } from "@/lib/color/catalog";
+import { colorName, getColor, type PaintColor } from "@/lib/color/catalog";
+import { useFavorites } from "./useFavorites";
 import type { Finish } from "@/lib/recolor/model";
 import { ColorPicker } from "./ColorPicker";
 import { Advanced } from "./Steps";
@@ -18,10 +19,18 @@ type Props = PickerProps & {
   onCleanup: (on: boolean) => void;
   advanced: boolean;
   onAdvanced: (open: boolean) => void;
+  /** Colours waiting to be compared side by side (max 4). */
+  compareList: PaintColor[];
+  onCompareAdd: (p: PaintColor) => void;
+  onCompareRemove: (id: string) => void;
+  onCompareOpen: () => void;
+  comparing: boolean;
 };
 
 export function ColorPanel(props: Props) {
-  const { surface, onRemoveColor, onFinish, onBrightness, onCleanup, advanced, onAdvanced, ...picker } = props;
+  const { surface, onRemoveColor, onFinish, onBrightness, onCleanup, advanced, onAdvanced, compareList, onCompareAdd, onCompareRemove, onCompareOpen, comparing, ...picker } =
+    props;
+  const { isFavorite, toggle } = useFavorites();
   const { t, locale, formatNumber } = useI18n();
   const paint = surface.paintId ? getColor(surface.paintId) : undefined;
   const name = paint ? colorName(paint, locale) : undefined;
@@ -52,12 +61,72 @@ export function ColorPanel(props: Props) {
             <p className="text-sm text-muted">{t("color.noPaint")}</p>
           )}
         </div>
-        {surface.hex && (
-          <button type="button" onClick={onRemoveColor} className="min-h-10 shrink-0 rounded-lg px-2 text-xs text-muted underline hover:text-ink">
-            {t("color.remove")}
+        {paint && (
+          <div className="flex shrink-0 flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => toggle(paint.id)}
+              aria-pressed={isFavorite(paint.id)}
+              aria-label={isFavorite(paint.id) ? t("color.unfavorite") : t("color.favorite")}
+              title={isFavorite(paint.id) ? t("color.unfavorite") : t("color.favorite")}
+              data-testid="favorite"
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border text-xl ${isFavorite(paint.id) ? "border-red-200 bg-red-50 text-red-600" : "border-line text-muted hover:bg-black/5"}`}
+            >
+              {isFavorite(paint.id) ? "♥" : "♡"}
+            </button>
+          </div>
+        )}
+        {paint && (
+          <button
+            type="button"
+            onClick={() => onCompareAdd(paint)}
+            disabled={compareList.some((c) => c.id === paint.id)}
+            data-testid="compare-add"
+            className="min-h-10 shrink-0 rounded-xl border border-brand-600 px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-40"
+          >
+            + {t("color.compareAdd")}
           </button>
         )}
       </div>
+      {surface.hex && (
+        <button type="button" onClick={onRemoveColor} className="-mt-2 self-end text-xs text-muted underline hover:text-ink">
+          {t("color.remove")}
+        </button>
+      )}
+
+      {compareList.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-brand-100 bg-brand-50 p-3" data-testid="compare-tray">
+          <p className="text-sm font-semibold">{t("color.compareTray", { n: formatNumber(compareList.length) })}</p>
+          <ul className="flex gap-2">
+            {compareList.map((c) => (
+              <li key={c.id} className="relative">
+                <span className="block h-11 w-11 rounded-lg border border-black/10" style={{ background: c.hex }} title={c.code} />
+                <button
+                  type="button"
+                  onClick={() => onCompareRemove(c.id)}
+                  aria-label={t("color.compareRemove", { code: c.code })}
+                  className="absolute -end-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs shadow"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+          {compareList.length < 2 ? (
+            <p className="text-xs text-muted">{t("color.compareHint")}</p>
+          ) : (
+            <button
+              type="button"
+              onClick={onCompareOpen}
+              disabled={comparing || surface.coverage === 0}
+              data-testid="compare-open"
+              className="min-h-12 rounded-xl bg-brand-600 px-4 font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {comparing ? t("color.comparing") : t("color.compareOpen")}
+            </button>
+          )}
+        </div>
+      )}
 
       <ColorPicker surface={surface} {...picker} />
 

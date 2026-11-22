@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { RecolorRenderer, type OverlayInput, type SurfaceRenderInput } from "@/lib/recolor/renderer";
 import type { LightingGains } from "@/lib/recolor/lighting";
+import type { Lab } from "@/lib/color/lab";
 import type { EditorDocument } from "@/lib/editor/document";
 import type { LoadedImage } from "@/lib/image/load";
 import { emptyRect, mergeCoverage, strokeSegment, unionRect, type BrushMode, type Rect } from "@/lib/mask/ops";
@@ -19,6 +20,8 @@ export type StageHandle = {
   exportBlob: (type?: string, quality?: number) => Promise<Blob | null>;
   /** Pixel of the current (recolored) render, image coordinates. */
   readPixel: (x: number, y: number) => [number, number, number];
+  /** Render the photo with one surface in each of the given colours (JPEG data URLs, at most `maxSize` px). */
+  renderVariants: (surfaceId: string, labs: Lab[], maxSize?: number) => string[];
 };
 
 type Props = {
@@ -213,8 +216,31 @@ export function Stage(props: Props) {
           }, type, quality);
         }),
       readPixel: (x, y) => rendererRef.current?.readPixel(x, y) ?? [0, 0, 0],
+      renderVariants: (surfaceId, labs, maxSize = 900) => {
+        const r = rendererRef.current;
+        const canvas = glCanvasRef.current;
+        if (!r || !canvas) return [];
+        const p = latest.current;
+        const k = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const out = document.createElement("canvas");
+        out.width = Math.round(image.width * k);
+        out.height = Math.round(image.height * k);
+        const ctx = out.getContext("2d");
+        if (!ctx) return [];
+        const urls = labs.map((lab) => {
+          r.render(
+            p.surfaces.map((s) => renderInput(s.id === surfaceId ? { ...s, lab, visible: true } : s)),
+            [],
+            p.lighting,
+          );
+          ctx.drawImage(canvas, 0, 0, out.width, out.height);
+          return out.toDataURL("image/jpeg", 0.85);
+        });
+        requestRender();
+        return urls;
+      },
     }),
-    [doc, requestRender],
+    [doc, image, requestRender],
   );
 
   /* ---------- layout ---------- */

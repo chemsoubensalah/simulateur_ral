@@ -124,3 +124,61 @@ test("work is saved: after a reload or going back, 'Continue' restores walls and
   await expect(page.getByTestId("resume")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("shop colours: groups, plain-language search, favourites and side-by-side comparison", async ({ page }) => {
+  const errors = collectErrors(page);
+  await openRoomWithWall(page, "/ar/editor");
+  await goStep(page, "colors");
+  await page.getByTestId("tab-catalog").click();
+  await page.getByTestId("scope-ral-classic").click();
+
+  // Named group: off-white (أبيض مكسور).
+  await page.getByTestId("group-offWhite").click();
+  const grid = page.locator('[data-testid="catalog-grid"] button');
+  await expect(grid.first()).toBeVisible();
+  const codes = await grid.evaluateAll((els) => els.map((e) => e.getAttribute("data-code")!));
+  expect(codes).toContain("RAL 9010");
+  expect(codes).not.toContain("RAL 5004");
+  await page.getByTestId("group-offWhite").click(); // off again
+
+  // Plain words: "بيج فاتح" (light beige).
+  await page.getByTestId("color-search").fill("بيج فاتح");
+  const hexes = await grid.evaluateAll((els) => els.map((e) => e.getAttribute("data-hex")!));
+  expect(hexes.length).toBeGreaterThan(2);
+  for (const hex of hexes) {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    expect(r).toBeGreaterThanOrEqual(b!); // warm
+    expect(0.3 * r! + 0.59 * g! + 0.11 * b!).toBeGreaterThan(160); // light
+  }
+  await page.getByTestId("color-search").fill("");
+
+  // Favourite: heart on the current paint, then the favourites group.
+  await pickPaint(page, "RAL 1015");
+  await page.getByTestId("favorite").click();
+  await expect(page.getByTestId("favorite")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("color-search").fill("");
+  await page.getByTestId("group-favorites").click();
+  await expect(grid).toHaveCount(1);
+  await expect(grid.first()).toHaveAttribute("data-code", "RAL 1015");
+  await page.getByTestId("group-favorites").click();
+
+  // Compare three colours side by side, choose one.
+  await page.getByTestId("compare-add").click();
+  await pickPaint(page, "RAL 7035");
+  await page.getByTestId("compare-add").click();
+  await pickPaint(page, "RAL 5024");
+  await page.getByTestId("compare-add").click();
+  await expect(page.getByTestId("compare-tray").locator("li")).toHaveCount(3);
+  await page.getByTestId("compare-open").click();
+  const view = page.getByTestId("compare-view");
+  await expect(view).toBeVisible();
+  await expect(view.getByTestId("compare-item")).toHaveCount(3);
+  // Each picture shows the wall in a different colour.
+  const srcs = await view.locator("img").evaluateAll((els) => els.map((e) => (e as HTMLImageElement).src));
+  expect(new Set(srcs).size).toBe(3);
+  for (const src of srcs) expect(src.startsWith("data:image/jpeg")).toBe(true);
+  await page.getByTestId("compare-choose-RAL 7035").click();
+  await expect(view).toBeHidden();
+  await expect(page.getByTestId("current-code")).toHaveText("RAL 7035");
+  expect(errors).toEqual([]);
+});

@@ -8,13 +8,15 @@ import {
   colorName,
   getCatalog,
   matchQuality,
-  searchColors,
   type CollectionId,
   type ColorFamily,
   type PaintColor,
 } from "@/lib/color/catalog";
 import { hexToLab, isValidHex, labToRgb, rgbToHex, type Lab } from "@/lib/color/lab";
 import { HARMONIES, STYLES, stylePalette, suggestPalette, type Harmony } from "@/lib/color/palettes";
+import { GROUP_DOT, GROUP_IDS, smartSearch, type GroupId } from "@/lib/color/groups";
+import { getColor } from "@/lib/color/catalog";
+import { useFavorites } from "./useFavorites";
 import type { Surface } from "./types";
 
 export type PickerTab = "catalog" | "ideas" | "match";
@@ -120,7 +122,21 @@ function ScopeSwitch({ scope, onScope, withAll = true }: { scope: Scope; onScope
   );
 }
 
-export function Swatch({ color, selected, onClick, size = "md", showCode = false }: { color: PaintColor; selected?: boolean; onClick: () => void; size?: "md" | "lg"; showCode?: boolean }) {
+export function Swatch({
+  color,
+  selected,
+  onClick,
+  size = "md",
+  showCode = false,
+  favorite = false,
+}: {
+  color: PaintColor;
+  selected?: boolean;
+  onClick: () => void;
+  size?: "md" | "lg";
+  showCode?: boolean;
+  favorite?: boolean;
+}) {
   const { locale } = useI18n();
   const name = colorName(color, locale);
   const label = name ? `${color.code} — ${name}` : color.code;
@@ -136,9 +152,15 @@ export function Swatch({ color, selected, onClick, size = "md", showCode = false
       className="group flex min-w-0 flex-col items-stretch gap-1 text-start"
     >
       <span
-        className={`block rounded-lg border border-black/10 ${size === "lg" ? "h-14" : "aspect-square"} ${selected ? "ring-2 ring-brand-600 ring-offset-2" : "group-hover:ring-2 group-hover:ring-black/20"}`}
+        className={`relative block rounded-lg border border-black/10 ${size === "lg" ? "h-14" : "aspect-square"} ${selected ? "ring-2 ring-brand-600 ring-offset-2" : "group-hover:ring-2 group-hover:ring-black/20"}`}
         style={{ background: color.hex }}
-      />
+      >
+        {favorite && (
+          <span className="absolute end-0.5 top-0.5 text-[10px] leading-none text-red-600 drop-shadow-[0_0_2px_#fff]" aria-hidden>
+            ♥
+          </span>
+        )}
+      </span>
       {showCode && (
         <span className="truncate text-[11px] leading-tight text-muted" dir="ltr">
           {color.code.replace(/^RAL /, "").replace(/^S /, "")}
@@ -177,9 +199,18 @@ function CatalogTab({ surface, onPick }: Props) {
   const [scope, setScope] = useScope();
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<ColorFamily | null>(null);
+  // Start with the shop's most popular colours: a short list instead of hundreds.
+  const [group, setGroup] = useState<GroupId | "favorites" | null>("popular");
   const [limit, setLimit] = useState(PAGE);
-  const results = useMemo(() => searchColors(query, { collection: scope, family, includeSpecial: true }), [query, scope, family]);
-  useEffect(() => setLimit(PAGE), [query, scope, family]);
+  const { favorites, isFavorite } = useFavorites();
+  const results = useMemo(() => {
+    if (group === "favorites") {
+      const favs = favorites.map((id) => getColor(id)).filter((c): c is PaintColor => !!c);
+      return query.trim() ? smartSearch(query, { collection: "all", includeSpecial: true }).filter((c) => favorites.includes(c.id)) : favs;
+    }
+    return smartSearch(query, { collection: scope, family, includeSpecial: true, group });
+  }, [query, scope, family, group, favorites]);
+  useEffect(() => setLimit(PAGE), [query, scope, family, group]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -189,7 +220,11 @@ function CatalogTab({ surface, onPick }: Props) {
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            // A search looks through every colour (favourites excepted).
+            if (group !== "favorites") setGroup(null);
+          }}
           placeholder={t("color.searchPlaceholder")}
           className="h-11 rounded-lg border border-line bg-white px-3 text-base"
           data-testid="color-search"
@@ -197,10 +232,55 @@ function CatalogTab({ surface, onPick }: Props) {
           spellCheck={false}
         />
       </label>
+      <div role="radiogroup" aria-label={t("color.groups")} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" data-testid="color-groups">
+        {favorites.length > 0 && (
+          <GroupCard
+            active={group === "favorites"}
+            onClick={() => {
+              setGroup(group === "favorites" ? null : "favorites");
+              setFamily(null);
+            }}
+            label={`${t("color.favorites")} (${formatNumber(favorites.length)})`}
+            dot="#fff"
+            icon="♥"
+            testId="group-favorites"
+          />
+        )}
+        {GROUP_IDS.map((g) => (
+          <GroupCard
+            key={g}
+            active={group === g}
+            onClick={() => {
+              setGroup(group === g ? null : g);
+              setFamily(null);
+            }}
+            label={t(`groups.${g}`)}
+            dot={GROUP_DOT[g]}
+            testId={`group-${g}`}
+          />
+        ))}
+      </div>
       <div role="radiogroup" aria-label={t("color.family")} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-        <FamilyChip active={family === null} onClick={() => setFamily(null)} label={t("color.allFamilies")} />
+        <FamilyChip
+          active={family === null && group === null}
+          onClick={() => {
+            setFamily(null);
+            setGroup(null);
+          }}
+          label={t("color.allFamilies")}
+        />
         {COLOR_FAMILIES.map((f) => (
-          <FamilyChip key={f} active={family === f} onClick={() => setFamily(family === f ? null : f)} label={t(`families.${f}`)} dot={FAMILY_DOT[f]} testId={`family-${f}`} />
+          <FamilyChip
+            key={f}
+            active={family === f}
+            onClick={() => {
+              setFamily(family === f ? null : f);
+              setGroup(null);
+            }}
+            label={t(`families.${f}`)}
+            dot={FAMILY_DOT[f]}
+            testId={`family-${f}`}
+          />
         ))}
       </div>
       <p className="text-xs text-muted" aria-live="polite">
@@ -211,7 +291,7 @@ function CatalogTab({ surface, onPick }: Props) {
         data-testid="catalog-grid"
       >
         {results.slice(0, limit).map((c) => (
-          <Swatch key={c.id} color={c} selected={surface.paintId === c.id} onClick={() => onPick(c)} showCode />
+          <Swatch key={c.id} color={c} selected={surface.paintId === c.id} onClick={() => onPick(c)} showCode favorite={isFavorite(c.id)} />
         ))}
       </div>
       {results.length > limit && (
@@ -223,6 +303,26 @@ function CatalogTab({ surface, onPick }: Props) {
         {t("color.approximate")} {scope !== "ral-classic" && t("color.ncsCalculated")}
       </p>
     </div>
+  );
+}
+
+function GroupCard({ active, onClick, label, dot, icon, testId }: { active: boolean; onClick: () => void; label: string; dot: string; icon?: string; testId: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      data-testid={testId}
+      className={`flex w-[5.5rem] shrink-0 flex-col items-center gap-1 rounded-2xl border-2 p-2 text-center text-xs font-semibold leading-tight ${
+        active ? "border-brand-600 bg-brand-50" : "border-line bg-white hover:bg-black/5"
+      }`}
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-black/10 text-lg text-red-600" style={{ background: dot }} aria-hidden>
+        {icon}
+      </span>
+      {label}
+    </button>
   );
 }
 

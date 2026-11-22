@@ -26,6 +26,7 @@ import { UploadPanel } from "./UploadPanel";
 import { LightSwitch } from "./LightSwitch";
 import { Advanced, NextButton, StepNav, useAdvanced, type Step } from "./Steps";
 import { SharePanel } from "./SharePanel";
+import { CompareView } from "./CompareView";
 import { brandSlug } from "@/lib/brand";
 import { CheckIcon, DownloadIcon, ImageIcon, MinusIcon, PlusIcon, SparkleIcon, SpinnerIcon } from "./icons";
 import type { Surface, Tool } from "./types";
@@ -120,6 +121,9 @@ export function Editor() {
   /** Where to show the "tap the wall" hint (image coordinates); null once the user has tapped. */
   const [hint, setHint] = useState<{ x: number; y: number } | null>(null);
   const hintDone = useRef(false);
+  const [compareList, setCompareList] = useState<PaintColor[]>([]);
+  const [compareView, setCompareView] = useState<{ paint: PaintColor; url: string }[] | null>(null);
+  const [comparing, setComparing] = useState(false);
   const [lightEst, setLightEst] = useState<LightingEstimate | null>(null);
   const [lightMode, setLightMode] = useState<LightMode>("photo");
   const lighting = useMemo(() => (lightEst ? lightingGains(lightEst, lightMode) : undefined), [lightEst, lightMode]);
@@ -941,6 +945,21 @@ export function Editor() {
     return () => window.removeEventListener("keydown", onKey);
   }, [doc, undo, redo, endSession]);
 
+  const openCompare = () => {
+    const stage = stageRef.current;
+    if (!stage || !selectedId || compareList.length < 2) return;
+    setComparing(true);
+    // Let the button show its busy state before the (synchronous) renders.
+    requestAnimationFrame(() => {
+      const urls = stage.renderVariants(
+        selectedId,
+        compareList.map((c) => c.lab),
+      );
+      setCompareView(compareList.map((paint, i) => ({ paint, url: urls[i] ?? "" })));
+      setComparing(false);
+    });
+  };
+
   const goStep = (next: Step) => {
     endSession();
     if (pick) cancelPick();
@@ -1318,6 +1337,11 @@ export function Editor() {
               onCleanup={(cleanup) => patchSurface(selected.id, { cleanup })}
               advanced={advanced}
               onAdvanced={setAdvanced}
+              compareList={compareList}
+              onCompareAdd={(c) => setCompareList((l) => (l.some((x) => x.id === c.id) ? l : [...l, c].slice(-4)))}
+              onCompareRemove={(id) => setCompareList((l) => l.filter((x) => x.id !== id))}
+              onCompareOpen={openCompare}
+              comparing={comparing}
             />
             <LightSwitch value={lightMode} onChange={setLightMode} />
             <Toolbar part="actions" {...toolbarProps} />
@@ -1367,6 +1391,16 @@ export function Editor() {
           </div>
         )}
       </aside>
+      {compareView && (
+        <CompareView
+          items={compareView}
+          onClose={() => setCompareView(null)}
+          onChoose={(paint) => {
+            pickPaint(paint);
+            setCompareView(null);
+          }}
+        />
+      )}
     </div>
   );
 }
