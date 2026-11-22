@@ -50,7 +50,7 @@ const en = {
     tip1: "Take the photo in daylight, with the lights on",
     tip2: "Step back so the whole wall is visible",
     tip3: "Hold the phone straight",
-    privacy: "Your photo is only sent to our server to be analysed — it is not stored. Your work stays on this device.",
+    privacy: "Your photo is only sent for analysis (our servers and our AI provider) and is not kept. Your work stays on this device.",
   },
   editor: {
     title: "Editor",

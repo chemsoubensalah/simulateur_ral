@@ -6,49 +6,34 @@ const isolationHeaders = [
   { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
 ];
 
+/** Server routes that run ONNX models. */
+const AI_ROUTES = ["/api/scene", "/api/sam/embed", "/api/walls"];
+const ORT_INCLUDES = [
+  "node_modules/onnxruntime-node/package.json",
+  "node_modules/onnxruntime-node/dist/**",
+  "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime.so.1",
+  "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_shared.so",
+  "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/onnxruntime_binding.node",
+];
+const ORT_EXCLUDES = [
+  "node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+  "node_modules/onnxruntime-node/bin/napi-v*/win32/**",
+  "node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**",
+  "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_cuda.so",
+  "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_tensorrt.so",
+  "node_modules/onnxruntime-web/**",
+  "public/ort/**",
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // Node-only packages used by the server fallback route.
   serverExternalPackages: ["@huggingface/transformers", "onnxruntime-node", "sharp"],
   // The native ONNX runtime is loaded dynamically, so it must be traced explicitly (Linux x64 CPU only).
-  outputFileTracingIncludes: {
-    "/api/scene": [
-      "node_modules/onnxruntime-node/package.json",
-      "node_modules/onnxruntime-node/dist/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime.so.1",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_shared.so",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/onnxruntime_binding.node",
-    ],
-    "/api/sam/embed": [
-      "node_modules/onnxruntime-node/package.json",
-      "node_modules/onnxruntime-node/dist/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime.so.1",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_shared.so",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/onnxruntime_binding.node",
-    ],
-  },
-  // Keep the serverless function small: only the Linux x64 CPU runtime is needed.
-  outputFileTracingExcludes: {
-    "/api/scene": [
-      "node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/win32/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_cuda.so",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_tensorrt.so",
-      "node_modules/onnxruntime-web/**",
-      "public/ort/**",
-    ],
-    "/api/sam/embed": [
-      "node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/win32/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_cuda.so",
-      "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_tensorrt.so",
-      "node_modules/onnxruntime-web/**",
-      "public/ort/**",
-    ],
-  },
+  outputFileTracingIncludes: Object.fromEntries(AI_ROUTES.map((r) => [r, ORT_INCLUDES])),
+  // Keep the serverless functions small: only the Linux x64 CPU runtime is needed.
+  outputFileTracingExcludes: Object.fromEntries(AI_ROUTES.map((r) => [r, ORT_EXCLUDES])),
   async headers() {
     return [
       { source: "/:locale/editor", headers: isolationHeaders },

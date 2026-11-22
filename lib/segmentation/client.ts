@@ -7,6 +7,8 @@ import { decodeHalf, unpackEnvelope } from "./f16";
 import { idbGet, idbPut } from "./idbCache";
 import type { Point } from "./postprocess";
 import { WALL_CLASSES, type SceneKind, type SceneMap, type SceneResponseHeader } from "./scene";
+import type { Sam3Mask, Sam3ResponseHeader } from "./sam3";
+import { rleDecode } from "@/lib/mask/rle";
 import { wallHintPoint } from "./sceneOps";
 import {
   SAM_MODEL_ID,
@@ -94,6 +96,44 @@ async function canvasToJpeg(canvas: HTMLCanvasElement, maxSize: number): Promise
 }
 
 const SCENE_ENDPOINT = "/api/scene";
+const WALLS_ENDPOINT = "/api/walls";
+
+let wallsAvailable: Promise<boolean> | null = null;
+/** Whether the server offers SAM 3 walls (checked once per page load). */
+export function isWallsServerAvailable(): Promise<boolean> {
+  wallsAvailable ??= fetch(WALLS_ENDPOINT)
+    .then((r) => (r.ok ? r.json() : { available: false }))
+    .then((j: { available?: boolean }) => !!j.available)
+    .catch(() => false);
+  return wallsAvailable;
+}
+
+/** SAM 3 walls and ceiling from the server (null if unavailable or failed). */
+export async function fetchSam3(canvas: HTMLCanvasElement): Promise<Sam3Mask[] | null> {
+  if (!(await isWallsServerAvailable())) return null;
+  try {
+    const body = await canvasToJpeg(canvas, 1536);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(WALLS_ENDPOINT, { method: "POST", body, headers: { "content-type": "image/jpeg" } }).catch(() => null);
+      if (res?.ok) {
+        const { header, payload } = unpackEnvelope<Sam3ResponseHeader>(await res.arrayBuffer());
+        const n = header.width * header.height;
+        return header.instances.map((m) => ({
+          kind: m.kind,
+          score: m.score,
+          width: header.width,
+          height: header.height,
+          mask: rleDecode(payload.subarray(m.offset, m.offset + m.length), n),
+        }));
+      }
+      if (res && res.status < 500) return null;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch {
+    /* optional */
+  }
+  return null;
+}
 
 /** Scene understanding from the server (null if unavailable). */
 export async function fetchScene(canvas: HTMLCanvasElement): Promise<SceneMap | null> {
@@ -299,6 +339,10 @@ export class SegmentationClient {
     this.scene = null;
     this.sceneCanvas = image.canvas;
     this.scenePromise = this.mode === "device" ? null : fetchScene(image.canvas).then((s) => (this.scene = s));
+    // The most precise walls (SAM 3 on the server), when the server offers them.
+    this.sam3Done = undefined;
+    this.sam3Promise = this.mode === "device" ? null : fetchSam3(image.canvas);
+    void this.sam3Surfaces(180_000);
     try {
       const server = this.mode !== "device" && (await isServerAvailable());
       // The image encoder needs ~1.5–2 GB of memory for a few seconds (SAM's
@@ -388,6 +432,26 @@ export class SegmentationClient {
   }
 
   private sceneCanvas: HTMLCanvasElement | null = null;
+  private sam3Promise: Promise<Sam3Mask[] | null> | null = null;
+  private sam3Done: Sam3Mask[] | null | undefined = undefined;
+
+  /** SAM 3 walls/ceiling (room only), waiting at most `timeoutMs`; null when not available. */
+  async sam3Surfaces(timeoutMs: number): Promise<Sam3Mask[] | null> {
+    if (this.sam3Done !== undefined) return this.sam3Done;
+    if (!this.sam3Promise) return null;
+    const res = await Promise.race([this.sam3Promise, new Promise<"timeout">((r) => setTimeout(() => r("timeout"), timeoutMs))]);
+    if (res === "timeout") return null;
+    // Scene understanding (if it comes) removes walls seen through windows and doors.
+    const scene = this.scene ?? (await Promise.race([this.scenePromise ?? Promise.resolve(null), new Promise<null>((r) => setTimeout(() => r(null), 5000))]));
+    const { roomSurfaces } = await import("./sam3");
+    this.sam3Done = res ? roomSurfaces(res, scene) : null;
+    return this.sam3Done;
+  }
+
+  /** SAM 3 result if it is already there (never waits). */
+  get sam3Ready(): Sam3Mask[] | null {
+    return this.sam3Done ?? null;
+  }
 
   /**
    * Ask the server again for scene understanding when the first request failed

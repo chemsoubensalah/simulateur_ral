@@ -30,6 +30,7 @@ import { CompareView } from "./CompareView";
 import { QuantityPanel, surfaceQuantities, type QuantitySettings } from "./QuantityPanel";
 import { SendPanel } from "./SendPanel";
 import { DEFAULT_COATS, DEFAULT_COVERAGE_M2_PER_L, defaultMeasure, type Measure } from "@/lib/paint/quantity";
+import { fullResolution, instanceAt, unionMask } from "@/lib/segmentation/sam3";
 import { brandSlug } from "@/lib/brand";
 import { CheckIcon, DownloadIcon, ImageIcon, MinusIcon, PlusIcon, SparkleIcon, SpinnerIcon } from "./icons";
 import type { Surface, Tool } from "./types";
@@ -529,10 +530,20 @@ export function Editor() {
     setHint(null);
     setAutoBusy(true);
     try {
-      await client.waitForUnderstanding(20_000);
-      // The scene server may have been starting up: ask once more before giving up.
-      if (!client.sceneReady) await client.retryScene(45_000);
-      const found = await client.autoSurfaces();
+      let found: { kind: "wall" | "ceiling"; mask: Uint8Array }[] = [];
+      // Most precise: SAM 3 on the server ("wall" / "ceiling"), when available.
+      const sam = await client.sam3Surfaces(60_000);
+      if (sam && image && sam.some((m) => m.kind === "wall")) {
+        for (const kind of ["wall", "ceiling"] as const) {
+          const u = unionMask(sam.filter((m) => m.kind === kind));
+          if (u) found.push({ kind, mask: fullResolution(u, image.pixels, image.width, image.height) });
+        }
+      } else {
+        await client.waitForUnderstanding(20_000);
+        // The scene server may have been starting up: ask once more before giving up.
+        if (!client.sceneReady) await client.retryScene(45_000);
+        found = await client.autoSurfaces();
+      }
       if (!found.length) {
         setNotice(t("ai.noWallsFound"));
         return;
@@ -685,6 +696,30 @@ export function Editor() {
           surfaceId = fresh.id;
         }
       }
+      // SAM 3 knows this wall precisely: use its outline directly.
+      const sam = segRef.current?.sam3Ready;
+      const inst = !s && smartMode === "add" && sam && image ? instanceAt(sam, p.x, p.y, image.width, image.height) : null;
+      if (inst && image) {
+        const raw = doc.rawMask(surfaceId);
+        if (!raw) return;
+        const before = raw.slice();
+        const full = fullResolution(inst, image.pixels, image.width, image.height);
+        // Never take a wall that already has its own colour.
+        const others = surfacesRef.current.filter((o) => o.id !== surfaceId && o.coverage > 0).map((o) => doc.rawMask(o.id)).filter((m): m is Uint8Array => !!m);
+        for (let i = 0; i < raw.length; i++) {
+          let v = full[i]!;
+          for (const o of others) if (o[i]! > 127) v = Math.min(v, 255 - o[i]!);
+          if (v > raw[i]!) raw[i] = v;
+        }
+        doc.history.record(surfaceId, before, raw, doc.width, { x: 0, y: 0, w: doc.width, h: doc.height });
+        // The surface may have been created just now (not yet in state): refresh it directly.
+        const { stats, coverage, mask } = doc.refresh(surfaceId, surfacesRef.current.find((o) => o.id === surfaceId)?.feather ?? 0);
+        stageRef.current?.uploadMask(surfaceId, mask);
+        patchSurface(surfaceId, { stats, coverage });
+        nameSurface(surfaceId, inst.kind);
+        setHistoryTick((n) => n + 1);
+        return;
+      }
       if (!s || s.surfaceId !== surfaceId) {
         const raw = doc.rawMask(surfaceId);
         if (!raw) return;
@@ -721,7 +756,8 @@ export function Editor() {
       });
       void runSmartDecode();
     },
-    [doc, selectedId, smartMode, runSmartDecode, surfaceAt, makeSurface],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nameSurface only reads the latest list via setSurfaces
+    [doc, image, selectedId, smartMode, runSmartDecode, surfaceAt, makeSurface, patchSurface],
   );
 
   /** In the colour and share steps a tap chooses the wall to colour. */

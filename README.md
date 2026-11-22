@@ -122,6 +122,14 @@ readout shows the measured time). Masks are 8-bit, edited on the CPU, uploaded a
   160×160 class map. Combined with SAM it powers *Paint all walls* (one surface for the walls, one for the
   ceiling), joins parts of the same wall split by furniture (*This part only* undoes it), names surfaces, warns
   when a tap hits furniture/window/floor, and places the “tap the wall” hint. Disable with `SCENE_SERVER=off`.
+- **SAM 3 (most precise, optional):** `POST /api/walls` segments the photo with Meta's SAM 3 from the words
+  "wall" and "ceiling": one precise mask per wall, objects on or in front of walls (air conditioners, frames,
+  chandeliers, furniture) left out. *Paint all walls* and taps on a wall then use these outlines (edges are
+  snapped to the photo; walls seen through windows/doors are dropped using scene understanding). Providers:
+  fal.ai GPUs (`FAL_KEY`), the int8 ONNX export on your own server (`SAM3_ONNX_DIR`, ≥ 6 GB RAM,
+  ~20-25 s per photo on 4 cores), or the Vercel site forwarding to your server (`SAM3_REMOTE_URL` +
+  `SAM3_REMOTE_TOKEN`). Without any of them the built-in pipeline below is used. SAM 3 is covered by Meta's
+  SAM License; check it for your use.
 - **Phones:** iPhones and Android phones always use the server embedding path (the in-browser encoder needs
   ~2.3 GB and mobile Safari reloads the page above ~1.4 GB); taps are still decoded on the device.
 - **Cross-origin isolation:** the editor page is served with COOP/COEP headers (see `next.config.ts`) so
@@ -172,6 +180,9 @@ None are required. All are optional (see `.env.example`):
 | `SAM_SERVER_FALLBACK=off` | Disable server-side SAM embeddings (phones then cannot use the AI) |
 | `SCENE_SERVER=off` | Disable scene understanding (*Paint all walls*, wall names, hints) |
 | `SAM_CACHE_DIR` | Where the server caches downloaded models (default: temp dir) |
+| `FAL_KEY` | SAM 3 on fal.ai (most precise walls) |
+| `SAM3_ONNX_DIR` | SAM 3 self-hosted: folder with the int8 ONNX files and tokenizer |
+| `SAM3_REMOTE_URL`, `SAM3_REMOTE_TOKEN` | SAM 3 on another server running this app (with `SAM3_ONNX_DIR` and the same token) |
 
 The shop's best sellers (the colour chart's first group) are listed in `POPULAR_CODES` in `lib/color/groups.ts`.
 

@@ -52,7 +52,7 @@ const de: Messages = {
     tip1: "Bei Tageslicht und mit Licht fotografieren",
     tip2: "Etwas zurücktreten, damit die ganze Wand zu sehen ist",
     tip3: "Das Handy gerade halten",
-    privacy: "Ihr Foto wird nur zur Analyse an unseren Server gesendet und nicht gespeichert. Ihre Arbeit bleibt auf diesem Gerät.",
+    privacy: "Ihr Foto wird nur zur Analyse gesendet (unsere Server und unser KI-Anbieter) und nicht aufbewahrt. Ihre Arbeit bleibt auf diesem Gerät.",
   },
   editor: {
     title: "Editor",
