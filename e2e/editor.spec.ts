@@ -49,6 +49,8 @@ test("language switcher changes locale and direction", async ({ page }) => {
 });
 
 test("upload → paint wall → change color → compare → undo → download", async ({ page, isMobile }) => {
+  // Long flow (brush strokes, two downloads); slower while the AI tests run in parallel.
+  test.setTimeout(150_000);
   const errors = collectErrors(page);
   await page.goto("/en/editor");
   await page.getByTestId("file-input").setInputFiles(SAMPLE);
