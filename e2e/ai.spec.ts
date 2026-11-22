@@ -36,6 +36,13 @@ test("tap a wall: AI selects exactly that wall; variants; done", async ({ page, 
   expect(dist(await pixel(page, ...SOFA), before.sofa)).toBeLessThan(4);
   expect(dist(await pixel(page, ...CEILING), before.ceiling)).toBeLessThan(4);
   expect(dist(await pixel(page, ...FRAME), before.frame)).toBeLessThan(4);
+  // Scene understanding joins the other wall of the same colour; "This part only" undoes it.
+  const joined = page.getByTestId("only-this-part");
+  if (await joined.isVisible()) {
+    expect(await coverageOf(page)).toBeGreaterThan(32);
+    await joined.click();
+    await expect.poll(() => coverageOf(page), { timeout: 30_000 }).toBeLessThan(32);
+  }
   const cov = await coverageOf(page);
   expect(cov).toBeGreaterThan(18);
   expect(cov).toBeLessThan(32);
@@ -102,7 +109,7 @@ test("server fallback computes embeddings on the server", async ({ page, isMobil
   await expect.poll(async () => dist(await pixel(page, ...BACK_WALL), wall), { timeout: 30_000 }).toBeGreaterThan(20);
   const cov = await coverageOf(page);
   expect(cov).toBeGreaterThan(18);
-  expect(cov).toBeLessThan(32);
+  expect(cov).toBeLessThan(45); // the back wall, possibly joined with the same-coloured left wall
   expect(errors).toEqual([]);
 });
 
@@ -148,5 +155,21 @@ test("facade: tapping the wall paints the wall, not the whole house", async ({ p
   for (const k of ["roof", "door", "glass", "grass"] as const) {
     expect(dist(await pixel(page, pts[k][0], pts[k][1]), before[k]), k).toBeLessThan(5);
   }
+  expect(errors).toEqual([]);
+});
+
+test("paint all walls: one tap paints every wall and the ceiling separately", async ({ page }) => {
+  const errors = collectErrors(page);
+  await openRoom(page, "/ar/editor");
+  const before = { back: await pixel(page, ...BACK_WALL), left: await pixel(page, ...LEFT_WALL), ceiling: await pixel(page, ...CEILING), sofa: await pixel(page, ...SOFA) };
+  await page.getByTestId("paint-all-walls").click();
+  await expect(page.getByTestId("surface-list").locator("li")).toHaveCount(2, { timeout: 60_000 });
+  await expect.poll(async () => dist(await pixel(page, ...BACK_WALL), before.back), { timeout: 30_000 }).toBeGreaterThan(8);
+  await expect.poll(async () => dist(await pixel(page, ...LEFT_WALL), before.left)).toBeGreaterThan(8);
+  expect(dist(await pixel(page, ...SOFA), before.sofa)).toBeLessThan(5);
+  // Surfaces get meaningful names.
+  const names = await page.getByTestId("surface-list").locator("input").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(names).toContain("الجدران");
+  expect(names).toContain("السقف");
   expect(errors).toEqual([]);
 });

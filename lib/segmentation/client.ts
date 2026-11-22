@@ -6,6 +6,7 @@ import type { LoadedImage } from "@/lib/image/load";
 import { decodeHalf, unpackEnvelope } from "./f16";
 import { idbGet, idbPut } from "./idbCache";
 import type { Point } from "./postprocess";
+import type { SceneKind, SceneMap, SceneResponseHeader } from "./scene";
 import {
   SAM_MODEL_ID,
   type CandidatePreview,
@@ -26,7 +27,15 @@ export type SegStatus =
   | { phase: "ready"; source: "device" | "server"; device: Device; encodeMs: number }
   | { phase: "error"; message: string };
 
-export type DecodeResult = { mask: Uint8Array; hypotheses: Hypothesis[]; chosen: number; usedSurfaces: boolean; ms: number };
+export type DecodeResult = {
+  mask: Uint8Array;
+  hypotheses: Hypothesis[];
+  chosen: number;
+  usedSurfaces: boolean;
+  ms: number;
+  kind: SceneKind | null;
+  merged: number;
+};
 export type CandidatesResult = { list: CandidatePreview[]; previewW: number; previewH: number; ms: number };
 
 /** Local encoding slower than this (after the model is loaded) switches to the server, if available. */
@@ -83,6 +92,27 @@ async function canvasToJpeg(canvas: HTMLCanvasElement, maxSize: number): Promise
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/jpeg", 0.9));
 }
 
+const SCENE_ENDPOINT = "/api/scene";
+
+/** Scene understanding from the server (null if unavailable). */
+export async function fetchScene(canvas: HTMLCanvasElement): Promise<SceneMap | null> {
+  try {
+    const body = await canvasToJpeg(canvas, 1024);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(SCENE_ENDPOINT, { method: "POST", body, headers: { "content-type": "image/jpeg" } }).catch(() => null);
+      if (res?.ok) {
+        const { header, payload } = unpackEnvelope<SceneResponseHeader>(await res.arrayBuffer());
+        return { width: header.width, height: header.height, classes: payload.slice() };
+      }
+      if (res && res.status !== 503) return null;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  } catch {
+    /* scene understanding is optional */
+  }
+  return null;
+}
+
 export async function fetchServerEmbeddings(canvas: HTMLCanvasElement): Promise<ExternalEmbeddings> {
   const cachedPe = await idbGet(PE_CACHE_KEY);
   const body = await canvasToJpeg(canvas, 1024);
@@ -123,6 +153,9 @@ export class SegmentationClient {
   private surfaceListeners = new Set<() => void>();
   /** Whether background surface analysis has finished for the current photo. */
   surfacesReady = false;
+  /** Scene understanding (walls, ceiling…) once received from the server. */
+  scene: SceneMap | null = null;
+  private scenePromise: Promise<SceneMap | null> | null = null;
   status: SegStatus = { phase: "idle" };
 
   /** Resolves when surface analysis is available, or after `timeoutMs` (whichever first). */
@@ -260,6 +293,9 @@ export class SegmentationClient {
   /** Load the model (cached after first use) and analyse the photo. */
   async start(image: LoadedImage): Promise<void> {
     this.setStatus({ phase: "loading", loaded: 0, total: 0 });
+    // Scene understanding runs on the server in parallel with everything else.
+    this.scene = null;
+    this.scenePromise = this.mode === "device" ? null : fetchScene(image.canvas).then((s) => (this.scene = s));
     try {
       const server = this.mode !== "device" && (await isServerAvailable());
       // The image encoder needs ~1.5–2 GB of memory for a few seconds (SAM's
@@ -303,9 +339,10 @@ export class SegmentationClient {
     this.worker = this.createWorker();
     const ready = await this.request(this.initMessage(), "ready");
     const rgba = image.pixels.slice().buffer as ArrayBuffer;
-    await this.request({ type: "setImage", rgba, width: image.width, height: image.height }, "imageSet", [rgba]);
+    await this.request({ type: "setImage", rgba, width: image.width, height: image.height, expectScene: !!this.scenePromise }, "imageSet", [rgba]);
     const t = [winner.imageEmbeddings.buffer, winner.positionalEmbeddings.buffer] as ArrayBuffer[];
     const done = await this.request({ type: "setEmbeddings", embeddings: winner }, "embedded", t);
+    void this.sendScene();
     this.setStatus({ phase: "ready", source: "device", device: ready.device, encodeMs: done.ms });
   }
 
@@ -314,12 +351,40 @@ export class SegmentationClient {
     if (this.disposed) return;
     this.setStatus({ phase: "analyzing", source: "server" });
     const rgba = image.pixels.slice().buffer as ArrayBuffer;
-    await this.request({ type: "setImage", rgba, width: image.width, height: image.height }, "imageSet", [rgba]);
+    await this.request({ type: "setImage", rgba, width: image.width, height: image.height, expectScene: !!this.scenePromise }, "imageSet", [rgba]);
     const embeddings = await fetchServerEmbeddings(image.canvas);
     if (this.disposed) return;
     const t = [embeddings.imageEmbeddings.buffer, embeddings.positionalEmbeddings.buffer] as ArrayBuffer[];
     const done = await this.request({ type: "setEmbeddings", embeddings }, "embedded", t);
+    void this.sendScene();
     this.setStatus({ phase: "ready", source: "server", device, encodeMs: done.ms });
+  }
+
+  /** Pass the scene map to the worker as soon as both exist. */
+  private async sendScene() {
+    const scene = await this.scenePromise;
+    if (this.disposed || !this.worker) return;
+    // Always answer, so taps are not left "provisional" when no scene is coming.
+    const payload = scene ? { ...scene, classes: scene.classes.slice() } : null;
+    await this.request({ type: "setScene", scene: payload }, "sceneSet").catch(() => undefined);
+    this.sceneSent = !!scene;
+    for (const l of this.surfaceListeners) l();
+  }
+  private sceneSent = false;
+
+  /** Whether scene understanding reached the worker (walls/ceiling known). */
+  get sceneReady(): boolean {
+    return this.sceneSent;
+  }
+
+  /** Waits until surface analysis and scene understanding are done, or the timeout. */
+  async waitForUnderstanding(timeoutMs: number): Promise<void> {
+    const end = Date.now() + timeoutMs;
+    await this.waitForSurfaces(timeoutMs);
+    if (this.scenePromise && !this.sceneSent) {
+      const left = Math.max(0, end - Date.now());
+      await Promise.race([this.scenePromise.then(() => new Promise((r) => setTimeout(r, 50))), new Promise((r) => setTimeout(r, left))]);
+    }
   }
 
   get ready(): boolean {
@@ -327,10 +392,18 @@ export class SegmentationClient {
   }
 
   /** Decode a prompt. Resolves null if a newer decode superseded this one. */
-  async decode(points: Point[], variant: number | null = null): Promise<DecodeResult | null> {
+  async decode(points: Point[], variant: number | null = null, merge = true): Promise<DecodeResult | null> {
     try {
-      const r = await this.request({ type: "decode", points, variant }, "decoded");
-      return { mask: new Uint8Array(r.mask), hypotheses: r.hypotheses, chosen: r.chosen, usedSurfaces: r.usedSurfaces, ms: r.ms };
+      const r = await this.request({ type: "decode", points, variant, merge }, "decoded");
+      return {
+        mask: new Uint8Array(r.mask),
+        hypotheses: r.hypotheses,
+        chosen: r.chosen,
+        usedSurfaces: r.usedSurfaces,
+        ms: r.ms,
+        kind: r.kind,
+        merged: r.merged,
+      };
     } catch (e) {
       if (e instanceof Error && e.message === "superseded") return null;
       throw e;
@@ -344,6 +417,12 @@ export class SegmentationClient {
   async candidates(): Promise<CandidatesResult> {
     const r = await this.request({ type: "candidates" }, "candidates");
     return { list: r.list, previewW: r.previewW, previewH: r.previewH, ms: r.ms };
+  }
+
+  /** One mask for all walls and one for the ceiling (needs scene understanding). */
+  async autoSurfaces(): Promise<{ kind: "wall" | "ceiling"; mask: Uint8Array }[]> {
+    const r = await this.request({ type: "autoSurfaces" }, "autoSurfaces");
+    return r.surfaces.map((s) => ({ kind: s.kind, mask: new Uint8Array(s.mask) }));
   }
 
   async materialize(ids: number[]): Promise<{ id: number; mask: Uint8Array }[]> {

@@ -30,6 +30,10 @@ import {
 } from "./postprocess";
 import { defaultRefineOptions, edgeMap, growMask, refineMask } from "@/lib/mask/refine";
 import { SAM_MODEL_ID, type CandidatePreview, type Device, type Hypothesis, type WorkerRequest, type WorkerResponse } from "./protocol";
+import { CEILING_CLASSES, sceneClassAt, sceneKind, WALL_CLASSES, type SceneKind, type SceneMap } from "./scene";
+import { binaryToLogits, classBinary, majorityClass, maxLogits, meanLab, sceneOnGrid } from "./sceneOps";
+import { deltaE2000 } from "@/lib/color/deltaE";
+import type { Lab } from "@/lib/color/lab";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -54,8 +58,37 @@ let emb: Embeddings | null = null;
 let generation = 0;
 let candidates: KeptCandidate[] | null = null;
 let candidateWaiters: number[] = [];
+/** "Paint all walls" requests waiting for the background analysis (never block the queue). */
+let autoWaiters: number[] = [];
 let candidateStart = 0;
 let latestDecode = 0;
+let scene: SceneMap | null = null;
+let scenePending = false;
+type CandidateInfo = { cls: number; purity: number; kind: SceneKind; lab: Lab | null };
+let candidateInfo: Map<number, CandidateInfo> | null = null;
+
+/** Scene class of every low-res SAM cell (valid region), or null. */
+function sceneGrid(): { grid: Uint8Array; W: number; H: number } | null {
+  if (!scene || !emb) return null;
+  const { w, h } = validLowRes(emb.geometry);
+  const W = Math.floor(w);
+  const H = Math.floor(h);
+  return { grid: sceneOnGrid(scene, W, H), W, H };
+}
+
+/** What each analysed surface is (wall, ceiling…) and its mean colour. */
+function ensureCandidateInfo(): Map<number, CandidateInfo> | null {
+  if (candidateInfo) return candidateInfo;
+  const sg = sceneGrid();
+  if (!sg || !candidates || !image) return null;
+  candidateInfo = new Map(
+    candidates.map((c) => {
+      const { cls, purity } = majorityClass(c.bin, sg.grid);
+      return [c.id, { cls, purity, kind: sceneKind(cls), lab: meanLab(c.bin, sg.W, sg.H, image!.rgba, image!.width, image!.height) }];
+    }),
+  );
+  return candidateInfo;
+}
 
 function post(msg: WorkerResponse, transfer: Transferable[] = []) {
   self.postMessage(msg, transfer);
@@ -213,6 +246,27 @@ async function runDecoder(prompts: Point[][]): Promise<{ logits: Float32Array; s
 
 /* ---------------- operations ---------------- */
 
+/**
+ * Join other parts of the same surface: analysed surfaces of the same kind
+ * (e.g. the wall on both sides of a fireplace) with a similar original colour.
+ */
+function joinSameSurface(base: Float32Array, kind: SceneKind): { logits: Float32Array; seeds: { x: number; y: number }[]; merged: number } {
+  const info = ensureCandidateInfo();
+  if (!info || !candidates || !emb || !image || (kind !== "wall" && kind !== "ceiling")) return { logits: base, seeds: [], merged: 0 };
+  const g = emb.geometry;
+  const baseBin = lowResBinary(base, 0, g).data;
+  const { w, h } = validLowRes(g);
+  const baseLab = meanLab(baseBin, Math.floor(w), Math.floor(h), image.rgba, image.width, image.height);
+  if (!baseLab) return { logits: base, seeds: [], merged: 0 };
+  const parts = candidates.filter((c) => {
+    const ci = info.get(c.id)!;
+    // Same paint in different light differs mostly in lightness: weigh it down (kL = 3).
+    return ci.kind === kind && ci.purity >= 0.6 && ci.lab !== null && deltaE2000(ci.lab, baseLab, 3) < 7 && iou(c.bin, baseBin) < 0.5;
+  });
+  if (!parts.length) return { logits: base, seeds: [], merged: 0 };
+  return { logits: maxLogits([base, ...parts.map((p) => p.logits)]), seeds: parts.map((p) => p.seed), merged: parts.length };
+}
+
 function finishMask(logits: Float32Array, offset: number, seeds: { x: number; y: number }[]): Uint8Array {
   if (!emb || !image) throw new Error("Not ready");
   const clean = cleanLogits(logits, offset, emb.geometry, seeds);
@@ -222,7 +276,7 @@ function finishMask(logits: Float32Array, offset: number, seeds: { x: number; y:
   return refineMask(grown, image.rgba, image.width, image.height, undefined, image.edges);
 }
 
-async function decode(id: number, points: Point[], variant: number | null) {
+async function decode(id: number, points: Point[], variant: number | null, merge = true) {
   if (id < latestDecode) return post({ type: "error", id, message: "superseded" });
   if (!emb || !image) throw new Error("Not ready");
   const t0 = performance.now();
@@ -261,7 +315,23 @@ async function decode(id: number, points: Point[], variant: number | null) {
 
   const seedsModel = toModelPoints(positives, image.width, image.height, g);
   const seeds = positives.map((_, i) => ({ x: seedsModel[2 * i]!, y: seedsModel[2 * i + 1]! }));
-  const mask = surface ? finishMask(surface.logits, 0, [surface.seed, ...seeds]) : finishMask(logits, chosen * MASK_SIZE, seeds);
+  let base = surface ? surface.logits : logits.slice(chosen * MASK_SIZE, (chosen + 1) * MASK_SIZE);
+  if (surface) seeds.push(surface.seed);
+
+  // Scene understanding: what was tapped, and join the rest of the same wall.
+  let kind: SceneKind | null = null;
+  let merged = 0;
+  if (scene && positives.length === 1) {
+    const p = positives[0]!;
+    kind = sceneKind(sceneClassAt(scene, p.x, p.y, image.width, image.height));
+    if (merge && points.length === 1 && variant === null) {
+      const j = joinSameSurface(base, kind);
+      base = j.logits;
+      seeds.push(...j.seeds);
+      merged = j.merged;
+    }
+  }
+  const mask = finishMask(base, 0, seeds);
   const total = hyps[0]!.bin.length;
   // Offer only visibly different alternatives for "Smaller / Larger" (SAM often
   // returns two near-identical masks).
@@ -271,7 +341,17 @@ async function decode(id: number, points: Point[], variant: number | null) {
   }
   const hypotheses: Hypothesis[] = distinct.map((index) => ({ index, score: hyps[index]!.score, area: binaryArea(hyps[index]!.bin) / total }));
   post(
-    { type: "decoded", id, mask: mask.buffer as ArrayBuffer, hypotheses, chosen, usedSurfaces: usedSurfaces || points.length > 1, ms: performance.now() - t0 },
+    {
+      type: "decoded",
+      id,
+      mask: mask.buffer as ArrayBuffer,
+      hypotheses,
+      chosen,
+      usedSurfaces: (usedSurfaces || points.length > 1) && (!!scene || !scenePending),
+      ms: performance.now() - t0,
+      kind,
+      merged,
+    },
     [mask.buffer as ArrayBuffer],
   );
 }
@@ -311,9 +391,48 @@ function startCandidates(gen: number) {
         const waiters = candidateWaiters;
         candidateWaiters = [];
         for (const id of waiters) sendCandidates(id);
+        const autos = autoWaiters;
+        autoWaiters = [];
+        for (const id of autos) enqueue(PRIORITY.interactive, withId(id, () => sendAutoSurfaces(id)));
       }
     });
   runBatch(0);
+}
+
+/**
+ * "Paint all walls": one mask for all walls and one for the ceiling, built from
+ * the analysed surfaces of that kind plus scene cells no surface covered,
+ * excluding objects (furniture, windows, doors…).
+ */
+function autoSurfaces(): { kind: "wall" | "ceiling"; mask: Uint8Array }[] {
+  const info = ensureCandidateInfo();
+  const sg = sceneGrid();
+  if (!info || !sg || !candidates || !emb) return [];
+  const out: { kind: "wall" | "ceiling"; mask: Uint8Array }[] = [];
+  for (const [kind, classes] of [["wall", WALL_CLASSES], ["ceiling", CEILING_CLASSES]] as const) {
+    const members = candidates.filter((c) => {
+      const ci = info.get(c.id)!;
+      return ci.kind === kind && ci.purity >= 0.55;
+    });
+    const objects = candidates.filter((c) => {
+      const ci = info.get(c.id)!;
+      return ci.kind !== kind && ci.purity >= 0.7;
+    });
+    const fromScene = classBinary(sg.grid, classes);
+    for (const o of objects) for (let i = 0; i < fromScene.length; i++) if (o.bin[i]) fromScene[i] = 0;
+    let area = 0;
+    for (const v of fromScene) area += v;
+    for (const m of members) area += binaryArea(m.bin);
+    if (area < 0.01 * fromScene.length) continue;
+    const logits = maxLogits([binaryToLogits(fromScene, sg.W, sg.H), ...members.map((m) => m.logits)]);
+    out.push({ kind, mask: finishMask(logits, 0, members.map((m) => m.seed)) });
+  }
+  return out;
+}
+
+function sendAutoSurfaces(id: number) {
+  const list = autoSurfaces();
+  post({ type: "autoSurfaces", id, surfaces: list.map((x) => ({ kind: x.kind, mask: x.mask.buffer as ArrayBuffer })) }, list.map((x) => x.mask.buffer as ArrayBuffer));
 }
 
 function sendCandidates(id: number) {
@@ -323,7 +442,8 @@ function sendCandidates(id: number) {
   const ph = Math.round(image.height * scale);
   const list: CandidatePreview[] = candidates.map((c) => {
     const clean = cleanLogits(c.logits, 0, emb!.geometry, [c.seed]);
-    return { id: c.id, area: c.area, score: c.score, preview: upsampleLogits(clean, 0, emb!.geometry, pw, ph) };
+    const kind = ensureCandidateInfo()?.get(c.id)?.kind;
+    return { id: c.id, area: c.area, score: c.score, preview: upsampleLogits(clean, 0, emb!.geometry, pw, ph), kind };
   });
   post(
     { type: "candidates", id, list, previewW: pw, previewH: ph, ms: performance.now() - candidateStart },
@@ -349,6 +469,10 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     case "setImage": {
       generation++;
       candidates = null;
+      scene = null;
+      candidateInfo = null;
+      scenePending = msg.expectScene ?? false;
+      autoWaiters = [];
       emb = null;
       const rgba = new Uint8ClampedArray(msg.rgba);
       image = { width: msg.width, height: msg.height, rgba, edges: edgeMap(rgba, msg.width, msg.height) };
@@ -397,11 +521,22 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     }
     case "decode":
       latestDecode = Math.max(latestDecode, msg.id);
-      enqueue(PRIORITY.interactive, withId(msg.id, () => decode(msg.id, msg.points, msg.variant)));
+      enqueue(PRIORITY.interactive, withId(msg.id, () => decode(msg.id, msg.points, msg.variant, msg.merge ?? true)));
       break;
     case "candidates":
       if (candidates) enqueue(PRIORITY.interactive, withId(msg.id, () => sendCandidates(msg.id)));
       else candidateWaiters.push(msg.id);
+      break;
+    case "setScene":
+      scene = msg.scene;
+      scenePending = false;
+      candidateInfo = null;
+      post({ type: "sceneSet", id: msg.id });
+      break;
+    case "autoSurfaces":
+      // Needs the analysed surfaces: answer now, or as soon as the analysis finishes.
+      if (candidates) enqueue(PRIORITY.interactive, withId(msg.id, () => sendAutoSurfaces(msg.id)));
+      else autoWaiters.push(msg.id);
       break;
     case "materialize":
       enqueue(PRIORITY.interactive, withId(msg.id, () => {

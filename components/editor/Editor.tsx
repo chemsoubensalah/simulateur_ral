@@ -14,6 +14,7 @@ import type { OverlayInput } from "@/lib/recolor/renderer";
 import { isMobileDevice, SegmentationClient, type SegmentationMode, type SegStatus } from "@/lib/segmentation/client";
 import type { Point as PromptPoint } from "@/lib/segmentation/postprocess";
 import type { CandidatePreview, Hypothesis } from "@/lib/segmentation/protocol";
+import type { SceneKind } from "@/lib/segmentation/scene";
 import { Stage, type StageHandle } from "./Stage";
 import { AiStatus } from "./AiStatus";
 import { Toolbar } from "./Toolbar";
@@ -54,6 +55,8 @@ type SmartSession = {
   chosen: number | null;
   /** The last result was chosen before surface analysis was available. */
   provisional: boolean;
+  /** Whether other parts of the same wall may be joined (false after "this part only"). */
+  merge: boolean;
 };
 
 type PickState =
@@ -88,7 +91,7 @@ export function Editor() {
   const [segAttempt, setSegAttempt] = useState(0);
   const [smartMode, setSmartMode] = useState<BrushMode>("add");
   const sessionRef = useRef<SmartSession | null>(null);
-  const [session, setSession] = useState<{ points: PromptPoint[]; hypotheses: Hypothesis[]; chosen: number | null } | null>(null);
+  const [session, setSession] = useState<{ points: PromptPoint[]; hypotheses: Hypothesis[]; chosen: number | null; merged?: number } | null>(null);
   const [smartBusy, setSmartBusy] = useState(0);
   const pendingDecode = useRef(false);
   const [pick, setPick] = useState<PickState | null>(null);
@@ -411,6 +414,70 @@ export function Editor() {
     [doc, refreshSurface],
   );
 
+  /** Give a surface a meaningful name ("Wall", "Ceiling"…) if it still has its default name. */
+  const nameSurface = (id: string, kind: SceneKind) => {
+    if (kind === "other") return;
+    setSurfaces((list) => {
+      const target = list.find((x) => x.id === id);
+      if (!target || !/\d+$/.test(target.name) || !isDefaultName(target.name)) return list;
+      const base = t(`kinds.${kind}`);
+      const taken = new Set(list.filter((x) => x.id !== id).map((x) => x.name));
+      let name = base;
+      for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
+      return list.map((x) => (x.id === id ? { ...x, name } : x));
+    });
+  };
+
+  const isDefaultName = (name: string) => {
+    const m = /(\d+)$/.exec(name);
+    return !!m && name === t("surfaces.defaultName", { n: Number(m[1]) });
+  };
+
+  const [autoBusy, setAutoBusy] = useState(false);
+
+  /** "Paint all walls": one surface for all walls (and one for the ceiling). */
+  const paintAllWalls = async () => {
+    const client = segRef.current;
+    if (!client || !doc) return;
+    endSession();
+    setCompare(false);
+    setAutoBusy(true);
+    try {
+      await client.waitForUnderstanding(20_000);
+      const found = await client.autoSurfaces();
+      if (!found.length) {
+        setNotice(t("ai.noWallsFound"));
+        return;
+      }
+      const empties = surfacesRef.current.filter((x) => x.coverage === 0);
+      const added: Surface[] = [];
+      let firstId: string | null = null;
+      for (const f of found) {
+        const reuse = empties.shift();
+        const surface = reuse ?? makeSurface(doc);
+        const raw = doc.rawMask(surface.id)!;
+        const before = raw.slice();
+        raw.set(f.mask);
+        doc.history.record(surface.id, before, raw, doc.width, { x: 0, y: 0, w: doc.width, h: doc.height });
+        const { stats, coverage, mask } = doc.refresh(surface.id, surface.feather);
+        stageRef.current?.uploadMask(surface.id, mask);
+        const name = t(f.kind === "wall" ? "kinds.walls" : "kinds.ceiling");
+        const paint = f.kind === "ceiling" ? getColor("ral-classic:RAL 9010") : undefined;
+        const patch: Partial<Surface> = { stats, coverage, name, ...(paint ? { hex: paint.hex, lab: paint.lab, paintId: paint.id } : {}) };
+        if (reuse) patchSurface(reuse.id, patch);
+        else added.push({ ...surface, ...patch });
+        if (f.kind === "wall") firstId ??= surface.id;
+      }
+      if (added.length) setSurfaces((l) => [...l, ...added]);
+      if (firstId) setSelectedId(firstId);
+      setHistoryTick((n) => n + 1);
+    } catch {
+      setNotice(t("ai.tapFailed"));
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
   const runSmartDecode = useCallback(
     async (variant: number | null = null) => {
       const client = segRef.current;
@@ -426,23 +493,37 @@ export function Editor() {
       try {
         // A first tap right after the photo is analysed waits (spinner) for the
         // surface analysis, so it selects the whole wall instead of a fragment.
-        if (variant === null && s.points.length === 1) await client.waitForSurfaces(15_000);
+        if (variant === null && s.points.length === 1) await client.waitForUnderstanding(15_000);
         if (sessionRef.current !== s) return;
-        const res = await client.decode(s.points, variant);
+        const res = await client.decode(s.points, variant, s.merge);
         if (!res || sessionRef.current !== s) return;
         applySmartMask(s, res.mask);
         s.hypotheses = res.hypotheses;
         s.chosen = res.chosen;
         s.provisional = !res.usedSurfaces;
-        setSession({ points: [...s.points], hypotheses: res.hypotheses, chosen: res.chosen });
+        setSession({ points: [...s.points], hypotheses: res.hypotheses, chosen: res.chosen, merged: res.merged });
+        if (res.kind && s.points.length === 1 && s.polarity === "add") {
+          nameSurface(s.surfaceId, res.kind);
+          if (res.kind === "furniture" || res.kind === "window" || res.kind === "outdoor" || res.kind === "floor")
+            setNotice(t("ai.notWall", { what: t(`kinds.${res.kind}`) }));
+        }
       } catch {
         setNotice(t("ai.tapFailed"));
       } finally {
         setSmartBusy((n) => n - 1);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [applySmartMask, t],
   );
+
+  /** Only the tapped part, without joining other parts of the same wall. */
+  const onlyThisPart = () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    s.merge = false;
+    void runSmartDecode();
+  };
 
   // Once surfaces are known, upgrade a selection that was chosen without them
   // (e.g. "whole house" → "the wall you tapped").
@@ -467,7 +548,7 @@ export function Editor() {
       if (!s || s.surfaceId !== selectedId) {
         const raw = doc.rawMask(selectedId);
         if (!raw) return;
-        s = { surfaceId: selectedId, base: raw.slice(), points: [], polarity: smartMode, hypotheses: [], chosen: null, provisional: false };
+        s = { surfaceId: selectedId, base: raw.slice(), points: [], polarity: smartMode, hypotheses: [], chosen: null, provisional: false, merge: true };
         sessionRef.current = s;
       }
       s.points.push({ x: p.x, y: p.y, label: smartMode === s.polarity ? 1 : 0 });
@@ -746,6 +827,18 @@ export function Editor() {
         )}
       </div>
     );
+  } else if (tool === "smart" && session && session.hypotheses.length > 0 && (session.merged ?? 0) > 0) {
+    bottomBar = (
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <span className={`${pill} bg-black/70 text-white`}>{t("ai.joined", { n: session.merged ?? 0 })}</span>
+        <button type="button" onClick={onlyThisPart} data-testid="only-this-part" className={`${pill} bg-white`}>
+          {t("ai.onlyThisPart")}
+        </button>
+        <button type="button" onClick={endSession} data-testid="smart-done" className={`${pill} bg-brand-600 text-white`}>
+          <CheckIcon width={18} height={18} /> {t("editor.finishSelection")}
+        </button>
+      </div>
+    );
   } else if (tool === "smart" && session && session.hypotheses.length > 0) {
     const order = [...session.hypotheses].sort((a, b) => a.area - b.area);
     const pos = order.findIndex((h) => h.index === session.chosen);
@@ -762,11 +855,22 @@ export function Editor() {
         </button>
       </div>
     );
-  } else if (tool === "smart" && aiReady && !session) {
+  } else if (tool === "smart" && aiReady && !session && !autoBusy) {
     bottomBar = (
-      <button type="button" onClick={startDetect} data-testid="detect-floating" className={`${pill} bg-white text-brand-700`}>
-        <SparkleIcon width={18} height={18} /> {t("editor.detect")}
-      </button>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button type="button" onClick={paintAllWalls} data-testid="paint-all-walls-floating" className={`${pill} bg-brand-600 text-white`}>
+          <SparkleIcon width={18} height={18} /> {t("ai.paintAllWalls")}
+        </button>
+        <button type="button" onClick={startDetect} data-testid="detect-floating" className={`${pill} bg-white text-brand-700`}>
+          {t("editor.detect")}
+        </button>
+      </div>
+    );
+  } else if (autoBusy) {
+    bottomBar = (
+      <span className={`${pill} bg-black/70 text-white`} role="status">
+        <SpinnerIcon width={18} height={18} /> {t("ai.findingWalls")}
+      </span>
     );
   }
 
@@ -871,6 +975,19 @@ export function Editor() {
         />
 
         <AiStatus status={seg} onRetry={() => setSegAttempt((n) => n + 1)} />
+
+        {smartAvailable && (
+          <button
+            type="button"
+            onClick={paintAllWalls}
+            disabled={!aiReady || autoBusy || !!pick}
+            data-testid="paint-all-walls"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-base font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {autoBusy ? <SpinnerIcon width={20} height={20} /> : <SparkleIcon width={20} height={20} />}
+            {autoBusy ? t("ai.findingWalls") : t("ai.paintAllWalls")}
+          </button>
+        )}
 
         {smartAvailable && (
           <button
