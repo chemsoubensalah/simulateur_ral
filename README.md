@@ -1,16 +1,23 @@
-# ColorVision
+# ALSY PAINTS colour visualizer (ColorVision)
 
-AI-assisted paint visualizer: upload a photo of a room or facade, select the walls and repaint them
-realistically — shadows, light gradients and texture are preserved. Arabic (RTL, default), German and English.
+AI-assisted paint visualizer for a paint shop and its customers: take a photo of a room or facade, tap the
+walls and try the shop's colours realistically — shadows, light and texture are preserved, old stains are not.
+Arabic (RTL, default), German and English. The shop name comes from `NEXT_PUBLIC_BRAND_NAME`.
 
-> **Status: Phase 3 of 7.**
-> Phase 1: project setup, i18n with RTL, photo upload, manual masking (brush, eraser, lasso, edge softness,
-> undo/redo, multiple surfaces), real-time WebGL CIELAB recoloring with finishes, before/after slider, JPG download.
-> Phase 2: AI wall detection with Segment Anything in the browser — tap a wall to select it, add/remove
-> points, smaller/larger alternatives, "detect all surfaces", edge snapping, server fallback for slow devices.
-> Phase 3: color database — RAL Classic (217) and NCS (2,472 + any valid NCS code), search by code or name in
-> Arabic/German/English, family filters, eyedropper, closest paint by ΔE2000, harmony and style palettes.
-> Next: paint calculator & PDF, accounts & sharing, live camera, shop.
+**For customers (three big steps):**
+1. **Walls** — photo tips, then *Paint all walls* (scene understanding finds every wall and the ceiling) or tap a
+   wall (an animated hint shows where). Each tapped wall becomes its own surface; furniture, windows and floors
+   are recognised and named. A progress bar shows the remaining time while the AI prepares.
+2. **Colour** — the shop's most popular colours first, named groups (off-white, warm beige, stone grey, calm
+   grey, soft green, sky blue, soft pink, terracotta, deep colours), RAL Classic and NCS, plain-language search
+   (“بيج فاتح”, “light grey”, “rouge foncé”), favourites, *compare up to 4 colours side by side on your own wall*,
+   finishes, *hide stains and defects*, and the light of the room (as photographed / daylight / evening lamps).
+3. **Save & send** — summary of the chosen colours, paint quantity per wall (litres and cans, no prices),
+   send the choice to the shop on WhatsApp, share or save the picture.
+
+Work is saved on the device automatically (a reload or the phone's back gesture does not lose it).
+Shops can print a QR poster from `/<locale>/qr`. Expert tools (brush, eraser, lasso, edge snapping, detect all
+surfaces) are under *More tools*.
 
 ## Quick start
 
@@ -54,6 +61,13 @@ shader `lib/recolor/shaders.ts`:
    soft-compressed. Out-of-gamut colors are mapped back by reducing chroma at constant luminance.
 6. Finishes: matte (slightly flatter shading), satin, gloss (restores the photo's specular highlights).
 7. A "light adjustment" slider per surface scales exposure when a photo's lighting makes the match look off.
+8. **Hide stains and defects** (on by default, `lib/recolor/shading.ts`): a mask-aware blur of the wall's
+   luminance (≈3.5 % of the photo) estimates the lighting; the shading ratio becomes
+   `(light / Y(Lm)) · (local / light)^0.15 · (Y / local)^0.8`, so new paint covers stains, patches and dirt
+   while keeping the room's light, shadows and fine plaster texture (cracks stay visible — paint doesn't fix them).
+9. **Room light** (`lib/recolor/lighting.ts`): the colour of the light is estimated from the brightest
+   near-neutral surfaces. *As photographed* gives the paint part of that cast (so it sits in the room),
+   *Daylight* neutralises the whole photo, *Evening* simulates warm lamps; before/after uses the same light.
 
 All surfaces are composited in one pass per surface on the GPU (a few ms on phones; the in-app "Render"
 readout shows the measured time). Masks are 8-bit, edited on the CPU, uploaded as dirty-rectangle texture updates.
@@ -104,19 +118,30 @@ readout shows the measured time). Masks are 8-bit, edited on the CPU, uploaded a
   than 25 s — the image embedding is computed by `POST /api/sam/embed` (same model on the server, ONNX Runtime
   for Node), sent as float16, and taps are still decoded on the device. Force a mode with `?sam=server` or
   `?sam=device` on the editor URL.
+- **Scene understanding:** `POST /api/scene` runs SegFormer-B5 (ADE20K, 150 classes) on the server and returns a
+  160×160 class map. Combined with SAM it powers *Paint all walls* (one surface for the walls, one for the
+  ceiling), joins parts of the same wall split by furniture (*This part only* undoes it), names surfaces, warns
+  when a tap hits furniture/window/floor, and places the “tap the wall” hint. Disable with `SCENE_SERVER=off`.
+- **Phones:** iPhones and Android phones always use the server embedding path (the in-browser encoder needs
+  ~2.3 GB and mobile Safari reloads the page above ~1.4 GB); taps are still decoded on the device.
 - **Cross-origin isolation:** the editor page is served with COOP/COEP headers (see `next.config.ts`) so
   WebAssembly can use multiple threads.
 
 ## Project structure
 
 ```
-app/[locale]/            pages (home, editor); root layout sets lang/dir
+app/[locale]/            pages (home, editor, qr poster); root layout sets lang/dir
 components/editor/       Editor, Stage (canvas + gestures), Toolbar, panels
-lib/color/               sRGB/XYZ/CIELAB/LCh, CIEDE2000, catalogue (RAL/NCS), NCS model, palettes
+lib/color/               sRGB/XYZ/CIELAB/LCh, CIEDE2000, catalogue (RAL/NCS), NCS model, palettes,
+                         shop groups and plain-language search (groups.ts)
 lib/recolor/             recolor model, GLSL shaders, WebGL renderer
 lib/mask/                brush/eraser/blur/merge ops, polygon raster, undo history, edge refinement
 lib/segmentation/        SAM worker, client (status, fallback), post-processing, IndexedDB cache
 app/api/sam/embed/       server fallback that computes SAM embeddings
+app/api/scene/           scene understanding (SegFormer-B5, ADE20K classes)
+lib/paint/               paint quantity: area, litres, can combination
+lib/editor/              document (masks, lighting maps), autosave (IndexedDB)
+lib/brand.ts             shop name and WhatsApp number
 lib/image/               JPG/PNG/HEIC loading, EXIF orientation, resize to 2048 px
 lib/i18n/ + messages/    typed translations (missing keys are compile errors)
 tests/unit/  e2e/        Vitest and Playwright tests
@@ -136,8 +161,19 @@ tests/unit/  e2e/        Vitest and Playwright tests
 
 ## Environment variables
 
-None are required for Phases 1–2. See `.env.example` (`SAM_SERVER_FALLBACK=off` disables the server fallback).
-Supabase and Stripe keys come with later phases.
+None are required. All are optional (see `.env.example`):
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_BRAND_NAME` | Shop name in the header, titles, messages and file names (default `ALSY PAINTS`) |
+| `NEXT_PUBLIC_SELLER_WHATSAPP` | Shop's WhatsApp number, international digits (e.g. `213550123456`); without it, *Send on WhatsApp* lets the customer pick a contact |
+| `NEXT_PUBLIC_CAN_SIZES` | Can sizes sold, in litres (default `1,2.5,5,10`) |
+| `NEXT_PUBLIC_SITE_URL` | Address printed in the QR poster (default: the address the poster is opened on) |
+| `SAM_SERVER_FALLBACK=off` | Disable server-side SAM embeddings (phones then cannot use the AI) |
+| `SCENE_SERVER=off` | Disable scene understanding (*Paint all walls*, wall names, hints) |
+| `SAM_CACHE_DIR` | Where the server caches downloaded models (default: temp dir) |
+
+The shop's best sellers (the colour chart's first group) are listed in `POPULAR_CODES` in `lib/color/groups.ts`.
 
 ## Deploying to Vercel
 
@@ -147,3 +183,6 @@ Supabase and Stripe keys come with later phases.
 4. The SAM server fallback runs as a Node serverless function (`maxDuration` 60 s, ~90 MB incl. the Linux
    ONNX runtime; GPU/other-platform binaries are excluded in `next.config.ts`). The model is downloaded to
    the function's temp dir on cold start. Give the function at least 1 GB of memory.
+5. Scene understanding (`/api/scene`) works the same way with a larger model (~85 MB, quantized); its first
+   request after a cold start takes longer (the client retries). Give it the same memory as the SAM function.
+6. After deploying, open `/ar/qr` on the production address and print the poster for the counter.
