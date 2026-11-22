@@ -12,7 +12,7 @@ import { diffRect, type BrushMode, type Rect } from "@/lib/mask/ops";
 import type { Finish } from "@/lib/recolor/model";
 import { estimateLighting, lightingGains, type LightingEstimate, type LightMode } from "@/lib/recolor/lighting";
 import type { OverlayInput } from "@/lib/recolor/renderer";
-import { isMobileDevice, SegmentationClient, type SegmentationMode, type SegStatus } from "@/lib/segmentation/client";
+import { isMobileDevice, SegmentationClient, wallsServer, type SegmentationMode, type SegStatus } from "@/lib/segmentation/client";
 import type { Point as PromptPoint } from "@/lib/segmentation/postprocess";
 import type { CandidatePreview, Hypothesis } from "@/lib/segmentation/protocol";
 import type { SceneKind } from "@/lib/segmentation/scene";
@@ -440,6 +440,11 @@ export function Editor() {
 
   /* ---------- AI segmentation ---------- */
 
+  // Wake the walls server early (a free server sleeps when unused) while the customer picks a photo.
+  useEffect(() => {
+    void wallsServer();
+  }, []);
+
   useEffect(() => {
     if (!image) return;
     const client = new SegmentationClient(samModeFromUrl());
@@ -532,7 +537,7 @@ export function Editor() {
     try {
       let found: { kind: "wall" | "ceiling"; mask: Uint8Array }[] = [];
       // Most precise: SAM 3 on the server ("wall" / "ceiling"), when available.
-      const sam = await client.sam3Surfaces(60_000);
+      const sam = await client.sam3Surfaces();
       if (sam && image && sam.some((m) => m.kind === "wall")) {
         for (const kind of ["wall", "ceiling"] as const) {
           const u = unionMask(sam.filter((m) => m.kind === kind));

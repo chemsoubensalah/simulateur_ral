@@ -96,7 +96,13 @@ async function canvasToJpeg(canvas: HTMLCanvasElement, maxSize: number): Promise
 }
 
 const SCENE_ENDPOINT = "/api/scene";
-const WALLS_ENDPOINT = "/api/walls";
+/**
+ * SAM 3 walls: this site's /api/walls, or a separate walls server called
+ * directly from the browser (NEXT_PUBLIC_SAM3_URL, e.g. a Hugging Face Space —
+ * no time limit of the site's own functions).
+ */
+const SAM3_URL = (process.env.NEXT_PUBLIC_SAM3_URL ?? "").replace(/\/+$/, "");
+const WALLS_ENDPOINT = SAM3_URL ? `${SAM3_URL}/api/walls` : "/api/walls";
 
 let wallsInfo: Promise<{ available: boolean; provider: string | null }> | null = null;
 /** Whether the server offers SAM 3 walls, and which provider (checked once per page load). */
@@ -135,7 +141,7 @@ export async function fetchSam3(canvas: HTMLCanvasElement): Promise<Sam3Mask[] |
     const cached = await idbGet(key).catch(() => undefined);
     if (cached) return decodeSam3(cached.body);
     for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await fetch(WALLS_ENDPOINT, { method: "POST", body: blob, headers: { "content-type": "image/jpeg" } }).catch(() => null);
+      const res = await fetch(WALLS_ENDPOINT, { method: "POST", body: blob, headers: { "content-type": "image/jpeg" }, signal: AbortSignal.timeout(150_000) }).catch(() => null);
       if (res?.ok) {
         const buf = await res.arrayBuffer();
         void idbPut(key, buf, "application/octet-stream").catch(() => undefined);
@@ -464,8 +470,12 @@ export class SegmentationClient {
     void this.sam3Surfaces(180_000);
   }
 
-  /** SAM 3 walls/ceiling (room only), waiting at most `timeoutMs`; null when not available. */
-  async sam3Surfaces(timeoutMs: number): Promise<Sam3Mask[] | null> {
+  /**
+   * SAM 3 walls/ceiling (room only), waiting at most `timeoutMs` (default: long
+   * enough for a CPU server, short for a GPU service); null when not available.
+   */
+  async sam3Surfaces(timeoutMs?: number): Promise<Sam3Mask[] | null> {
+    timeoutMs ??= (await wallsServer()).provider === "fal" ? 30_000 : 100_000;
     if (this.sam3Done !== undefined) return this.sam3Done;
     this.ensureSam3();
     if (!this.sam3Promise) return null;

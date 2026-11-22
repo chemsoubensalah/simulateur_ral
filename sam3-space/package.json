@@ -1,0 +1,12 @@
+{
+  "name": "alsy-walls-sam3",
+  "private": true,
+  "type": "module",
+  "description": "SAM 3 wall/ceiling segmentation server for the ALSY PAINTS colour visualizer (Hugging Face Space or any Docker host).",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "onnxruntime-node": "1.30.0",
+    "sharp": "0.35.5"
+  }
+}

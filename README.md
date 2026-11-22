@@ -128,7 +128,10 @@ readout shows the measured time). Masks are 8-bit, edited on the CPU, uploaded a
   snapped to the photo; walls seen through windows/doors are dropped using scene understanding). Providers:
   fal.ai GPUs (`FAL_KEY`), the int8 ONNX export on your own server (`SAM3_ONNX_DIR`, ≥ 6 GB RAM,
   ~20-25 s per photo on 4 cores), or the Vercel site forwarding to your server (`SAM3_REMOTE_URL` +
-  `SAM3_REMOTE_TOKEN`). Without any of them the built-in pipeline below is used. SAM 3 is covered by Meta's
+  `SAM3_REMOTE_TOKEN`), or a free Hugging Face Space built from `sam3-space/` (Docker, CPU basic, ~40 s
+  per photo; set `NEXT_PUBLIC_SAM3_URL` to its address and its `ALLOWED_ORIGINS` to the site's address).
+  The same photo is analysed only once (cached on the device and the server), and each visitor has an hourly
+  limit. Without any of them the built-in pipeline below is used. SAM 3 is covered by Meta's
   SAM License; check it for your use.
 - **Phones:** iPhones and Android phones always use the server embedding path (the in-browser encoder needs
   ~2.3 GB and mobile Safari reloads the page above ~1.4 GB); taps are still decoded on the device.
@@ -183,6 +186,8 @@ None are required. All are optional (see `.env.example`):
 | `FAL_KEY` | SAM 3 on fal.ai (most precise walls) |
 | `SAM3_ONNX_DIR` | SAM 3 self-hosted: folder with the int8 ONNX files and tokenizer |
 | `SAM3_REMOTE_URL`, `SAM3_REMOTE_TOKEN` | SAM 3 on another server running this app (with `SAM3_ONNX_DIR` and the same token) |
+| `NEXT_PUBLIC_SAM3_URL` | SAM 3 on a Hugging Face Space made from `sam3-space/` (free) |
+| `SAM3_PER_HOUR`, `SAM3_DAILY_LIMIT` | Cost limits for SAM 3 per visitor per hour (20) and per day (300) |
 
 The shop's best sellers (the colour chart's first group) are listed in `POPULAR_CODES` in `lib/color/groups.ts`.
 
