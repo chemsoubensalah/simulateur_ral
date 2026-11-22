@@ -45,6 +45,11 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           </li>
         ))}
       </ul>
+      <p className="mt-10 text-center">
+        <Link href={`/${locale}/qr`} className="text-sm text-muted underline hover:text-ink" data-testid="qr-link">
+          {m.qr.forShop}
+        </Link>
+      </p>
     </div>
   );
 }

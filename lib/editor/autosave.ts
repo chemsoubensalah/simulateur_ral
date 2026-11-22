@@ -10,6 +10,7 @@ import { idbDelete, idbGet, idbPut } from "@/lib/segmentation/idbCache";
 import { packEnvelope, unpackEnvelope } from "@/lib/segmentation/f16";
 import type { Finish } from "@/lib/recolor/model";
 import type { LightMode } from "@/lib/recolor/lighting";
+import type { Measure } from "@/lib/paint/quantity";
 
 const IMAGE_KEY = "session:image";
 const STATE_KEY = "session:state";
@@ -26,6 +27,8 @@ export type SavedSurface = {
   visible: boolean;
   /** Hide stains and defects (missing in sessions saved before it existed: on). */
   cleanup?: boolean;
+  /** Wall size for the paint quantity. */
+  measure?: Measure;
   mask: Uint8Array;
 };
 
@@ -36,6 +39,9 @@ export type SavedSession = {
   selectedId: string | null;
   /** Lighting view (missing: as photographed). */
   light?: LightMode;
+  /** Paint quantity settings. */
+  coats?: number;
+  coverage?: number;
   surfaces: SavedSurface[];
 };
 
@@ -98,6 +104,8 @@ export function serializeSession(s: SavedSession): Uint8Array {
     height: s.height,
     selectedId: s.selectedId,
     light: s.light,
+    coats: s.coats,
+    coverage: s.coverage,
     surfaces: s.surfaces.map((x, i) => {
       const { mask: _mask, ...meta } = x;
       void _mask;
@@ -126,6 +134,8 @@ export function deserializeSession(buf: ArrayBuffer): SavedSession | null {
       height: header.height,
       selectedId: header.selectedId,
       light: header.light,
+      coats: header.coats,
+      coverage: header.coverage,
       surfaces: header.surfaces.map(({ offset, length, ...meta }) => ({
         ...meta,
         mask: rleDecode(payload.subarray(offset, offset + length), n),

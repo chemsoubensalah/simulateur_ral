@@ -27,6 +27,9 @@ import { LightSwitch } from "./LightSwitch";
 import { Advanced, NextButton, StepNav, useAdvanced, type Step } from "./Steps";
 import { SharePanel } from "./SharePanel";
 import { CompareView } from "./CompareView";
+import { QuantityPanel, surfaceQuantities, type QuantitySettings } from "./QuantityPanel";
+import { SendPanel } from "./SendPanel";
+import { DEFAULT_COATS, DEFAULT_COVERAGE_M2_PER_L, defaultMeasure, type Measure } from "@/lib/paint/quantity";
 import { brandSlug } from "@/lib/brand";
 import { CheckIcon, DownloadIcon, ImageIcon, MinusIcon, PlusIcon, SparkleIcon, SpinnerIcon } from "./icons";
 import type { Surface, Tool } from "./types";
@@ -121,6 +124,8 @@ export function Editor() {
   /** Where to show the "tap the wall" hint (image coordinates); null once the user has tapped. */
   const [hint, setHint] = useState<{ x: number; y: number } | null>(null);
   const hintDone = useRef(false);
+  const [measures, setMeasures] = useState<Record<string, Measure>>({});
+  const [qtySettings, setQtySettings] = useState<QuantitySettings>({ coats: DEFAULT_COATS, coverage: DEFAULT_COVERAGE_M2_PER_L });
   const [compareList, setCompareList] = useState<PaintColor[]>([]);
   const [compareView, setCompareView] = useState<{ paint: PaintColor; url: string }[] | null>(null);
   const [comparing, setComparing] = useState(false);
@@ -227,6 +232,8 @@ export function Editor() {
             .then((b) => (b ? saveSessionImage(b) : undefined))
             .catch(() => undefined);
         }
+        setMeasures(restore ? Object.fromEntries(restore.surfaces.filter((x) => x.measure).map((x) => [x.id, x.measure!])) : {});
+        setQtySettings({ coats: restore?.coats ?? DEFAULT_COATS, coverage: restore?.coverage ?? DEFAULT_COVERAGE_M2_PER_L });
         setLightEst(estimateLighting(img.pixels, img.width, img.height));
         setLightMode(restore?.light ?? "photo");
         setDoc(d);
@@ -283,6 +290,8 @@ export function Editor() {
         height: doc.height,
         selectedId,
         light: lightMode,
+        coats: qtySettings.coats,
+        coverage: qtySettings.coverage,
         surfaces: surfacesRef.current
           .map((s) => ({ s, mask: doc.rawMask(s.id) }))
           .filter((x): x is { s: Surface; mask: Uint8Array } => !!x.mask)
@@ -296,13 +305,14 @@ export function Editor() {
             feather: s.feather,
             visible: s.visible,
             cleanup: s.cleanup,
+            measure: measures[s.id],
             mask,
           })),
       };
       void imageSaved.current.then(() => saveSessionState(state)).catch(() => undefined);
     }, 1200);
     return () => clearTimeout(timer);
-  }, [doc, image, surfaces, selectedId, historyTick, lightMode]);
+  }, [doc, image, surfaces, selectedId, historyTick, lightMode, measures, qtySettings]);
 
   // Offer to continue the last session on the upload screen.
   const [resume, setResume] = useState<{
@@ -996,6 +1006,10 @@ export function Editor() {
   const aiReady = seg.phase === "ready";
   const smartAvailable = seg.phase !== "error";
   const anyPainted = surfaces.some((s) => s.coverage > 0);
+  // Every painted surface has a measure; the default kind follows its name (all walls → room, ceiling → ceiling).
+  const measuresFor: Record<string, Measure> = Object.fromEntries(
+    surfaces.map((s) => [s.id, measures[s.id] ?? defaultMeasure(s.name === t("kinds.walls") ? "room" : s.name === t("kinds.ceiling") ? "ceiling" : "wall")]),
+  );
   const showHint = !!hint && step === "walls" && tool === "smart" && aiReady && !session && !pick && !autoBusy && !anyPainted;
 
   const toolbarProps = {
@@ -1365,7 +1379,10 @@ export function Editor() {
             }}
             lightSwitch={<LightSwitch value={lightMode} onChange={setLightMode} />}
             compareButton={<Toolbar part="actions" {...toolbarProps} />}
-          />
+          >
+            <QuantityPanel surfaces={surfaces} measures={measuresFor} onMeasure={(id, m) => setMeasures((x) => ({ ...x, [id]: m }))} settings={qtySettings} onSettings={setQtySettings} />
+            <SendPanel rows={surfaceQuantities(surfaces, measuresFor, qtySettings)} getImage={() => stageRef.current?.exportBlob("image/jpeg", 0.88) ?? Promise.resolve(null)} />
+          </SharePanel>
         )}
 
         {step !== "share" && (

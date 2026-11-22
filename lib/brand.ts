@@ -8,3 +8,6 @@ export const BRAND = {
 
 /** File-name friendly brand, e.g. "alsy-paints". */
 export const brandSlug = () => BRAND.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "colors";
+
+/** Seller's WhatsApp number in international format, digits only (e.g. 213550123456); empty = choose a contact. */
+export const SELLER_WHATSAPP = (process.env.NEXT_PUBLIC_SELLER_WHATSAPP ?? "").replace(/\D/g, "");
