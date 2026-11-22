@@ -182,7 +182,16 @@ const en = {
     gloss: "Gloss",
     brightness: "Light adjustment",
     brightnessHint: "Adjust if the new color looks too bright or too dark for the room's light.",
+    cleanup: "Hide stains and defects",
+    cleanupHint: "New paint covers stains, patches and dirt. The room's light and shadows stay.",
     remove: "Remove color",
+  },
+  light: {
+    title: "Light",
+    photo: "As in the photo",
+    day: "Daylight",
+    evening: "Evening (lamps)",
+    hint: "See how the colors look at different times of day.",
   },
   families: {
     white: "White",

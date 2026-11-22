@@ -1,6 +1,7 @@
 import { MaskHistory, type MaskPatch } from "@/lib/mask/history";
 import { featherMask, maskCoverage } from "@/lib/mask/ops";
 import { computeLightness, surfaceStats, type SurfaceStats } from "@/lib/recolor/model";
+import { estimateShading, type ShadingMap } from "@/lib/recolor/shading";
 
 /**
  * Framework-free container for the per-image editing data that is too large
@@ -12,6 +13,7 @@ export class EditorDocument {
   readonly history: MaskHistory;
   private raw = new Map<string, Uint8Array>();
   private display = new Map<string, Uint8Array>();
+  private shadingMaps = new Map<string, ShadingMap | null>();
 
   constructor(
     readonly width: number,
@@ -49,20 +51,29 @@ export class EditorDocument {
   deleteMask(id: string): void {
     this.raw.delete(id);
     this.display.delete(id);
+    this.shadingMaps.delete(id);
     this.history.dropSurface(id);
   }
 
   /**
    * Recompute the feathered (displayed) mask and its statistics after an edit.
-   * Returns the lightness statistics under the mask (null if empty) and the
-   * fraction of the image covered.
+   * Returns the lightness statistics under the mask (null if empty), the
+   * fraction of the image covered and the surface's lighting map.
    */
-  refresh(id: string, feather: number): { stats: SurfaceStats | null; coverage: number; mask: Uint8Array } {
+  refresh(id: string, feather: number): { stats: SurfaceStats | null; coverage: number; mask: Uint8Array; shading: ShadingMap | null } {
     const raw = this.raw.get(id);
     if (!raw) throw new Error(`Unknown surface ${id}`);
     const shown = feather > 0 ? featherMask(raw, this.width, this.height, feather) : raw;
     this.display.set(id, shown);
-    return { stats: this.stats(shown), coverage: maskCoverage(shown), mask: shown };
+    const stats = this.stats(shown);
+    const shading = stats ? estimateShading(this.lightness, shown, this.width, this.height) : null;
+    this.shadingMaps.set(id, shading);
+    return { stats, coverage: maskCoverage(shown), mask: shown, shading };
+  }
+
+  /** Lighting map of a surface from its last refresh (for "hide stains and defects"). */
+  shading(id: string): ShadingMap | null {
+    return this.shadingMaps.get(id) ?? null;
   }
 
   undo(): MaskPatch | null {

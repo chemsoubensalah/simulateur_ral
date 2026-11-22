@@ -13,14 +13,6 @@ void main() {
 }
 `;
 
-export const BASE_FRAGMENT_SHADER = /* glsl */ `
-precision highp float;
-varying vec2 vUv;
-uniform sampler2D uImage;
-void main() {
-  gl_FragColor = vec4(texture2D(uImage, vUv).rgb, 1.0);
-}
-`;
 
 const COLOR_GLSL = /* glsl */ `
 const float EPS = 0.008856451679035631; // 216/24389
@@ -82,6 +74,19 @@ vec3 gamutMap(vec3 rgb, float y) {
 }
 `;
 
+export const BASE_FRAGMENT_SHADER = /* glsl */ `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uImage;
+uniform vec3 uImageGain;   // colour of the light (1,1,1 = as photographed)
+${COLOR_GLSL}
+void main() {
+  vec3 c = texture2D(uImage, vUv).rgb;
+  if (uImageGain != vec3(1.0)) c = linearToSrgb3(srgbToLinear3(c) * uImageGain);
+  gl_FragColor = vec4(c, 1.0);
+}
+`;
+
 export const SURFACE_FRAGMENT_SHADER = /* glsl */ `
 precision highp float;
 varying vec2 vUv;
@@ -93,27 +98,57 @@ uniform float uRefY;       // reference luminance: Y of the surface's mean L*
 uniform float uContrast;   // shading exponent k (finish + highlight headroom)
 uniform float uKnee;       // soft-clip knee
 uniform float uSpecular;   // finish: highlight preservation
+uniform sampler2D uShading; // smooth lighting of the surface, L*/100 (see shading.ts)
+uniform float uCleanup;    // 1 = hide stains and defects
+uniform float uBeta;       // kept share of mid-scale variation (stains)
+uniform float uTexture;    // kept share of fine texture
+uniform vec2 uTexel;       // 1 / image size
+uniform vec3 uImageGain;   // colour of the light on the photo
+uniform vec3 uPaintGain;   // colour of the light on the paint
 ${COLOR_GLSL}
+// Cheap luminance proxy (sRGB^2) for ratios between nearby pixels.
+float lumProxy(vec3 c) { return dot(c * c, vec3(0.2126729, 0.7151522, 0.072175)); }
+
 void main() {
   float m = texture2D(uMask, vUv).r;
   if (m <= 0.0) discard;
-  vec3 src = srgbToLinear3(texture2D(uImage, vUv).rgb);
+  vec3 srcS = texture2D(uImage, vUv).rgb;
+  vec3 src = srgbToLinear3(srcS);
   float Y = luminance(src);
 
   float Lt = uTargetLab.x;
-  float r = Y / max(uRefY, 1e-4);
+  float ref = max(uRefY, 1e-4);
+  float r = Y / ref;
+  if (uCleanup > 0.5) {
+    float light = max(lToY(texture2D(uShading, vUv).r * 100.0), 1e-4);
+    // Local mean over a 4x4 neighbourhood (4 bilinear taps), weighted by the
+    // mask so neighbouring objects do not leak into the wall.
+    vec2 d = uTexel * 1.5;
+    vec2 o0 = vUv + vec2(-d.x, -d.y);
+    vec2 o1 = vUv + vec2(d.x, -d.y);
+    vec2 o2 = vUv + vec2(-d.x, d.y);
+    vec2 o3 = vUv + d;
+    vec4 w = vec4(texture2D(uMask, o0).r, texture2D(uMask, o1).r, texture2D(uMask, o2).r, texture2D(uMask, o3).r);
+    vec4 l = vec4(lumProxy(texture2D(uImage, o0).rgb), lumProxy(texture2D(uImage, o1).rgb),
+                  lumProxy(texture2D(uImage, o2).rgb), lumProxy(texture2D(uImage, o3).rgb));
+    float ws = dot(w, vec4(1.0));
+    float fine = ws > 0.05 ? clamp(lumProxy(srcS) / max(dot(w, l) / ws, 1e-5), 0.5, 2.0) : 1.0;
+    // local ≈ Y / fine (the luminance averaged over the neighbourhood).
+    float local = max(Y / fine, 1e-4);
+    r = (light / ref) * pow(local / light, uBeta) * pow(fine, uTexture);
+  }
 
   float Yn = softClip(uTargetY * pow(max(r, 0.0), uContrast), uKnee);
   float L = yToL(Yn);
   float chroma = min(1.0, (L + 16.0) / (Lt + 16.0));
-  vec3 rgb = gamutMap(labToLinear(vec3(L, uTargetLab.yz * chroma)), Yn);
+  vec3 rgb = gamutMap(labToLinear(vec3(L, uTargetLab.yz * chroma)) * uPaintGain, Yn * luminance(uPaintGain));
 
   if (uSpecular > 0.0) {
     float maxC = max(src.r, max(src.g, src.b));
     float minC = min(src.r, min(src.g, src.b));
     float sat = maxC > 0.0 ? (maxC - minC) / maxC : 0.0;
-    float spec = smoothstep(1.25, 2.2, r) * (1.0 - sat) * uSpecular;
-    rgb = mix(rgb, max(rgb, src), spec);
+    float spec = smoothstep(1.25, 2.2, Y / ref) * (1.0 - sat) * uSpecular;
+    rgb = mix(rgb, max(rgb, src * uImageGain), spec);
   }
 
   gl_FragColor = vec4(linearToSrgb3(rgb), m);

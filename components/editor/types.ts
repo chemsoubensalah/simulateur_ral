@@ -16,6 +16,8 @@ export type Surface = {
   /** Edge feather radius in image pixels (0–3). */
   feather: number;
   visible: boolean;
+  /** Hide stains, patches and dirt of the old wall (new paint covers them). */
+  cleanup: boolean;
   /** Lightness statistics of the photo under the mask (null when empty). */
   stats: SurfaceStats | null;
   coverage: number;

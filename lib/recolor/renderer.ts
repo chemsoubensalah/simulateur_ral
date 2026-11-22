@@ -1,5 +1,7 @@
 import { BASE_FRAGMENT_SHADER, OVERLAY_FRAGMENT_SHADER, SURFACE_FRAGMENT_SHADER, VERTEX_SHADER } from "./shaders";
 import { shadingConstants, type Finish, type SurfaceStats } from "./model";
+import { CLEANUP, type ShadingMap } from "./shading";
+import { NEUTRAL, type LightingGains } from "./lighting";
 import type { Lab } from "@/lib/color/lab";
 
 export type SurfaceRenderInput = {
@@ -9,6 +11,8 @@ export type SurfaceRenderInput = {
   finish: Finish;
   brightness: number;
   visible: boolean;
+  /** Hide stains and defects (needs a shading map, see setShading). */
+  cleanup: boolean;
 };
 
 /** A tinted, outlined mask drawn on top (selection highlight, detected surfaces). */
@@ -56,6 +60,7 @@ export class RecolorRenderer {
   private quad: WebGLBuffer;
   private imageTex: WebGLTexture | null = null;
   private maskTex = new Map<string, WebGLTexture>();
+  private shadingTex = new Map<string, WebGLTexture>();
   private width = 0;
   private height = 0;
   private lost = false;
@@ -69,7 +74,7 @@ export class RecolorRenderer {
     });
     if (!gl) throw new Error("WebGL is not available");
     this.gl = gl;
-    this.base = link(gl, BASE_FRAGMENT_SHADER, ["uImage"]);
+    this.base = link(gl, BASE_FRAGMENT_SHADER, ["uImage", "uImageGain"]);
     this.surface = link(gl, SURFACE_FRAGMENT_SHADER, [
       "uImage",
       "uMask",
@@ -79,6 +84,13 @@ export class RecolorRenderer {
       "uContrast",
       "uKnee",
       "uSpecular",
+      "uShading",
+      "uCleanup",
+      "uBeta",
+      "uTexture",
+      "uTexel",
+      "uImageGain",
+      "uPaintGain",
     ]);
     this.overlay = link(gl, OVERLAY_FRAGMENT_SHADER, ["uMask", "uSize", "uColor", "uOpacity"]);
     const quad = gl.createBuffer();
@@ -118,6 +130,8 @@ export class RecolorRenderer {
     this.canvas.height = height;
     for (const t of this.maskTex.values()) gl.deleteTexture(t);
     this.maskTex.clear();
+    for (const t of this.shadingTex.values()) gl.deleteTexture(t);
+    this.shadingTex.clear();
     if (this.imageTex) gl.deleteTexture(this.imageTex);
     this.imageTex = this.createTexture();
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -156,6 +170,26 @@ export class RecolorRenderer {
     const tex = this.maskTex.get(id);
     if (tex) this.gl.deleteTexture(tex);
     this.maskTex.delete(id);
+    const sh = this.shadingTex.get(id);
+    if (sh) this.gl.deleteTexture(sh);
+    this.shadingTex.delete(id);
+  }
+
+  /** Upload the low-resolution lighting map of a surface (null removes it). */
+  setShading(id: string, map: ShadingMap | null): void {
+    const gl = this.gl;
+    let tex = this.shadingTex.get(id);
+    if (!map) {
+      if (tex) gl.deleteTexture(tex);
+      this.shadingTex.delete(id);
+      return;
+    }
+    if (!tex) {
+      tex = this.createTexture();
+      this.shadingTex.set(id, tex);
+    } else gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, map.width, map.height, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, map.data);
   }
 
   private bindQuad(p: Program): void {
@@ -165,7 +199,7 @@ export class RecolorRenderer {
     gl.vertexAttribPointer(p.aPos, 2, gl.FLOAT, false, 0, 0);
   }
 
-  render(surfaces: SurfaceRenderInput[], overlays: OverlayInput[] = []): void {
+  render(surfaces: SurfaceRenderInput[], overlays: OverlayInput[] = [], lighting: LightingGains = { image: NEUTRAL, paint: NEUTRAL }): void {
     if (!this.imageTex || this.isContextLost) return;
     const gl = this.gl;
     gl.viewport(0, 0, this.width, this.height);
@@ -176,6 +210,7 @@ export class RecolorRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.imageTex);
     gl.uniform1i(this.base.uniforms.uImage ?? null, 0);
+    gl.uniform3f(this.base.uniforms.uImageGain ?? null, ...lighting.image);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     gl.enable(gl.BLEND);
@@ -186,10 +221,21 @@ export class RecolorRenderer {
     this.bindQuad(s);
     gl.uniform1i(s.uniforms.uImage ?? null, 0);
     gl.uniform1i(s.uniforms.uMask ?? null, 1);
+    gl.uniform1i(s.uniforms.uShading ?? null, 2);
+    gl.uniform1f(s.uniforms.uBeta ?? null, CLEANUP.beta);
+    gl.uniform1f(s.uniforms.uTexture ?? null, CLEANUP.texture);
+    gl.uniform2f(s.uniforms.uTexel ?? null, 1 / this.width, 1 / this.height);
+    gl.uniform3f(s.uniforms.uImageGain ?? null, ...lighting.image);
+    gl.uniform3f(s.uniforms.uPaintGain ?? null, ...lighting.paint);
     for (const surf of surfaces) {
       const tex = this.maskTex.get(surf.id);
       if (!surf.visible || !surf.target || !surf.stats || !tex) continue;
       const c = shadingConstants(surf.target, surf.stats, surf.finish, surf.brightness);
+      const shading = surf.cleanup ? this.shadingTex.get(surf.id) : undefined;
+      gl.activeTexture(gl.TEXTURE2);
+      // Bind something valid even when unused (sampler must reference a complete texture).
+      gl.bindTexture(gl.TEXTURE_2D, shading ?? tex);
+      gl.uniform1f(s.uniforms.uCleanup ?? null, shading ? 1 : 0);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.uniform3f(s.uniforms.uTargetLab ?? null, surf.target.L, surf.target.a, surf.target.b);
@@ -233,6 +279,7 @@ export class RecolorRenderer {
     const gl = this.gl;
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     for (const t of this.maskTex.values()) gl.deleteTexture(t);
+    for (const t of this.shadingTex.values()) gl.deleteTexture(t);
     if (this.imageTex) gl.deleteTexture(this.imageTex);
     gl.deleteBuffer(this.quad);
     gl.deleteProgram(this.base.program);

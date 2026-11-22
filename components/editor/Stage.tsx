@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { RecolorRenderer, type OverlayInput, type SurfaceRenderInput } from "@/lib/recolor/renderer";
+import type { LightingGains } from "@/lib/recolor/lighting";
 import type { EditorDocument } from "@/lib/editor/document";
 import type { LoadedImage } from "@/lib/image/load";
 import { emptyRect, mergeCoverage, strokeSegment, unionRect, type BrushMode, type Rect } from "@/lib/mask/ops";
@@ -37,6 +38,8 @@ type Props = {
   onEditEnd: (surfaceId: string, before: Uint8Array, rect: Rect) => void;
   onRenderTime?: (ms: number) => void;
   onWebglError: () => void;
+  /** Colour of the light (photo and paint); undefined = as photographed. */
+  lighting?: LightingGains;
   /** Additional tinted masks (e.g. detected surfaces), drawn above the selection highlight. */
   overlays?: OverlayInput[];
   /** When true, taps go to onTap whatever the tool (used to pick detected surfaces). */
@@ -53,6 +56,16 @@ type Props = {
 const MIN_SCALE = 1;
 const MAX_SCALE = 8;
 const OVERLAY_COLOR: [number, number, number] = [0.13, 0.45, 0.95];
+
+const renderInput = (s: Surface, stats = s.stats): SurfaceRenderInput => ({
+  id: s.id,
+  target: s.lab,
+  stats,
+  finish: s.finish,
+  brightness: s.brightness,
+  visible: s.visible,
+  cleanup: s.cleanup,
+});
 
 type Gesture =
   | { kind: "idle" }
@@ -96,19 +109,12 @@ export function Stage(props: Props) {
     if (!r) return;
     const p = latest.current;
     const live = liveMean.current;
-    const inputs: SurfaceRenderInput[] = p.surfaces.map((s) => ({
-      id: s.id,
-      target: s.lab,
-      stats: live && live.id === s.id ? live.stats : s.stats,
-      finish: s.finish,
-      brightness: s.brightness,
-      visible: s.visible,
-    }));
+    const inputs = p.surfaces.map((s) => renderInput(s, live && live.id === s.id ? live.stats : s.stats));
     const t0 = performance.now();
     const overlays: OverlayInput[] = [];
     if (p.showMask && !p.compare && p.selectedId && !p.tapMode) overlays.push({ maskId: p.selectedId, color: OVERLAY_COLOR, opacity: 0.35 });
     if (!p.compare && p.overlays) overlays.push(...p.overlays);
-    r.render(inputs, overlays);
+    r.render(inputs, overlays, p.lighting);
     // Skip the first frames: they include shader compilation and texture upload.
     if (p.onRenderTime && ++renderCount.current > 2 && t0 - lastRenderReport.current > 300) {
       r.readPixel(0, 0); // forces the GPU to finish so the timing is real
@@ -136,6 +142,7 @@ export function Stage(props: Props) {
     for (const s of latest.current.surfaces) {
       const m = doc.displayMask(s.id);
       if (m) r.setMask(s.id, m);
+      r.setShading(s.id, doc.shading(s.id));
     }
     rendererRef.current = r;
     renderCount.current = 0;
@@ -150,28 +157,39 @@ export function Stage(props: Props) {
 
   useEffect(() => {
     requestRender();
-  }, [surfaces, selectedId, showMask, compare, props.overlays, props.tapMode, requestRender]);
+  }, [surfaces, selectedId, showMask, compare, props.overlays, props.tapMode, props.lighting, requestRender]);
 
   // The untouched photo is only needed for the before/after slider: create it
   // on demand and release it afterwards (saves ~12 MB plus GPU memory on phones).
+  // With a lighting mode, "before" is the photo under the same light.
   useEffect(() => {
     const orig = origCanvasRef.current;
+    const r = rendererRef.current;
     if (!orig) return;
     if (compare) {
       orig.width = image.width;
       orig.height = image.height;
-      orig.getContext("2d")?.drawImage(image.canvas, 0, 0);
+      const ctx = orig.getContext("2d");
+      const neutral = !props.lighting || props.lighting.image.every((v) => v === 1);
+      if (neutral || !r || !glCanvasRef.current) ctx?.drawImage(image.canvas, 0, 0);
+      else {
+        r.render([], [], props.lighting);
+        ctx?.drawImage(glCanvasRef.current, 0, 0);
+        renderNow();
+      }
     } else {
       orig.width = 0;
       orig.height = 0;
     }
-  }, [compare, image]);
+  }, [compare, image, props.lighting, renderNow]);
 
   useImperativeHandle(
     props.ref,
     () => ({
       uploadMask: (id, mask, width, height) => {
         rendererRef.current?.setMask(id, mask, width, height);
+        // Surface masks (full size) come with their lighting map.
+        if (width === undefined) rendererRef.current?.setShading(id, doc.shading(id));
         requestRender();
       },
       removeMask: (id) => {
@@ -186,10 +204,7 @@ export function Stage(props: Props) {
           if (!r || !canvas) return resolve(null);
           // Render without the selection overlay, export, then restore.
           const p = latest.current;
-          r.render(
-            p.surfaces.map((s) => ({ id: s.id, target: s.lab, stats: s.stats, finish: s.finish, brightness: s.brightness, visible: s.visible })),
-            [],
-          );
+          r.render(p.surfaces.map((s) => renderInput(s)), [], p.lighting);
           canvas.toBlob((b) => {
             resolve(b);
             requestRender();
@@ -197,7 +212,7 @@ export function Stage(props: Props) {
         }),
       readPixel: (x, y) => rendererRef.current?.readPixel(x, y) ?? [0, 0, 0],
     }),
-    [requestRender],
+    [doc, requestRender],
   );
 
   /* ---------- layout ---------- */

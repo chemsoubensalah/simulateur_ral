@@ -24,6 +24,12 @@
  *     soft-compressed (no hard clipping). Out-of-gamut results are mapped back
  *     by reducing chroma at constant Y.
  *  6. Gloss/satin finishes add back part of the original specular highlights.
+ *  7. "Hide stains and defects" (optional): the shading ratio is split into
+ *     lighting (a large mask-aware blur, see ./shading.ts), mid-scale
+ *     variation (stains, patches) and fine texture. New paint covers the
+ *     stains, not the light, so the mid band is mostly removed:
+ *        r = (light / Ym) · (local / light)^β · (Y / local)^τ
+ *  8. The paint takes on the colour of the room's light (./lighting.ts).
  */
 
 import { lToY, yToL, labToXyz, xyzToLinearRgb, srgbToLinear, linearToSrgb, type Lab, type RGB } from "@/lib/color/lab";
@@ -50,6 +56,13 @@ export type RecolorParams = {
   finish: Finish;
   /** Exposure multiplier (1 = exact mean-lightness match). */
   brightness: number;
+  /**
+   * Hide stains and defects: `light` = smooth lighting luminance at the pixel,
+   * `local` = luminance averaged over a few pixels around it.
+   */
+  cleanup?: { light: number; local: number; beta: number; texture: number };
+  /** Colour of the light on the paint (linear RGB multipliers). */
+  paintGain?: [number, number, number];
 };
 
 /** Per-surface constants shared by the CPU model and the shader uniforms. */
@@ -108,6 +121,20 @@ export function shadingConstants(target: Lab, stats: SurfaceStats, finish: Finis
   };
 }
 
+/**
+ * Shading ratio of a pixel relative to the surface's reference luminance.
+ * Without cleanup: Y / refY. With cleanup the mid-scale variation (stains)
+ * is attenuated by β and the fine texture by τ (see the header).
+ */
+export function shadingRatio(Y: number, refY: number, cleanup?: RecolorParams["cleanup"]): number {
+  const ref = Math.max(refY, 1e-4);
+  if (!cleanup) return Y / ref;
+  const light = Math.max(cleanup.light, 1e-4);
+  const local = Math.max(cleanup.local, 1e-4);
+  const fine = Math.min(2, Math.max(0.5, Y / local));
+  return (light / ref) * Math.pow(local / light, cleanup.beta) * Math.pow(fine, cleanup.texture);
+}
+
 function smoothstep(e0: number, e1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
@@ -134,19 +161,22 @@ export function recolorPixel(src: RGB, p: RecolorParams): RGB {
   const Y = luminance(sr, sg, sb);
 
   const Lt = p.target.L;
-  const r = Y / Math.max(c.refY, 1e-4);
+  const r = shadingRatio(Y, c.refY, p.cleanup);
   const Yn = softClip(c.targetY * Math.pow(r, c.contrast), c.knee);
   const L = yToL(Yn);
   const chroma = Math.min(1, (L + 16) / (Lt + 16));
   const lab: Lab = { L, a: p.target.a * chroma, b: p.target.b * chroma };
 
-  let rgb = gamutMap(xyzToLinearRgb(labToXyz(lab)), Yn);
+  let rgb = xyzToLinearRgb(labToXyz(lab));
+  const gain = p.paintGain ?? [1, 1, 1];
+  rgb = rgb.map((v, i) => v * gain[i]!) as [number, number, number];
+  rgb = gamutMap(rgb, Yn * luminance(gain[0], gain[1], gain[2]));
 
   if (c.specular > 0) {
     const maxC = Math.max(sr, sg, sb);
     const minC = Math.min(sr, sg, sb);
     const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
-    const spec = smoothstep(1.25, 2.2, r) * (1 - sat) * c.specular;
+    const spec = smoothstep(1.25, 2.2, Y / Math.max(c.refY, 1e-4)) * (1 - sat) * c.specular;
     rgb = rgb.map((v, i) => {
       const s = [sr, sg, sb][i] ?? 0;
       return v + (Math.max(v, s) - v) * spec;

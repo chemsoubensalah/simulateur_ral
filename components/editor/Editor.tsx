@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/client";
 import { hexToLab, rgbToHex, type Lab } from "@/lib/color/lab";
 import { getColor, type PaintColor } from "@/lib/color/catalog";
@@ -10,6 +10,7 @@ import { EditorDocument } from "@/lib/editor/document";
 import { ImageLoadError, loadImageFile, loadImageUrl, type LoadedImage } from "@/lib/image/load";
 import { diffRect, type BrushMode, type Rect } from "@/lib/mask/ops";
 import type { Finish } from "@/lib/recolor/model";
+import { estimateLighting, lightingGains, type LightingEstimate, type LightMode } from "@/lib/recolor/lighting";
 import type { OverlayInput } from "@/lib/recolor/renderer";
 import { isMobileDevice, SegmentationClient, type SegmentationMode, type SegStatus } from "@/lib/segmentation/client";
 import type { Point as PromptPoint } from "@/lib/segmentation/postprocess";
@@ -22,6 +23,7 @@ import { SurfacesPanel } from "./SurfacesPanel";
 import { ColorPanel } from "./ColorPanel";
 import type { PickerTab } from "./ColorPicker";
 import { UploadPanel } from "./UploadPanel";
+import { LightSwitch } from "./LightSwitch";
 import { CheckIcon, DownloadIcon, ImageIcon, MinusIcon, PlusIcon, SparkleIcon, SpinnerIcon } from "./icons";
 import type { Surface, Tool } from "./types";
 
@@ -84,6 +86,9 @@ export function Editor() {
   const [comparePos, setComparePos] = useState(50);
   const [historyTick, setHistoryTick] = useState(0);
   const [renderMs, setRenderMs] = useState<number | null>(null);
+  const [lightEst, setLightEst] = useState<LightingEstimate | null>(null);
+  const [lightMode, setLightMode] = useState<LightMode>("photo");
+  const lighting = useMemo(() => (lightEst ? lightingGains(lightEst, lightMode) : undefined), [lightEst, lightMode]);
 
   // AI segmentation
   const segRef = useRef<SegmentationClient | null>(null);
@@ -123,6 +128,7 @@ export function Editor() {
         brightness: 1,
         feather: 0,
         visible: true,
+        cleanup: true,
         stats: null,
         coverage: 0,
       };
@@ -161,6 +167,7 @@ export function Editor() {
               brightness: s.brightness,
               feather: s.feather,
               visible: s.visible,
+              cleanup: s.cleanup ?? true,
               stats,
               coverage,
             };
@@ -177,6 +184,8 @@ export function Editor() {
             .then((b) => (b ? saveSessionImage(b) : undefined))
             .catch(() => undefined);
         }
+        setLightEst(estimateLighting(img.pixels, img.width, img.height));
+        setLightMode(restore?.light ?? "photo");
         setDoc(d);
         setImage(img);
         setSurfaces(list);
@@ -226,6 +235,7 @@ export function Editor() {
         width: doc.width,
         height: doc.height,
         selectedId,
+        light: lightMode,
         surfaces: surfacesRef.current
           .map((s) => ({ s, mask: doc.rawMask(s.id) }))
           .filter((x): x is { s: Surface; mask: Uint8Array } => !!x.mask)
@@ -238,13 +248,14 @@ export function Editor() {
             brightness: s.brightness,
             feather: s.feather,
             visible: s.visible,
+            cleanup: s.cleanup,
             mask,
           })),
       };
       void imageSaved.current.then(() => saveSessionState(state)).catch(() => undefined);
     }, 1200);
     return () => clearTimeout(timer);
-  }, [doc, image, surfaces, selectedId, historyTick]);
+  }, [doc, image, surfaces, selectedId, historyTick, lightMode]);
 
   // Offer to continue the last session on the upload screen.
   const [resume, setResume] = useState<{ url: string; savedAt: number; image: Blob; state: SavedSession | null } | null>(null);
@@ -911,6 +922,7 @@ export function Editor() {
             setDoc(null);
             setError(t("upload.errorWebgl"));
           }}
+          lighting={lighting}
           overlays={pickOverlays}
           tapMode={!!pick || eyedropper}
           onTap={eyedropper ? onEyedrop : pick ? onPickTap : onSmartTap}
@@ -947,6 +959,8 @@ export function Editor() {
             </span>
           )}
         </div>
+
+        <LightSwitch value={lightMode} onChange={setLightMode} />
 
         <Toolbar
           tool={tool}
@@ -1041,6 +1055,7 @@ export function Editor() {
             onRemoveColor={() => patchSurface(selected.id, { hex: null, lab: null, paintId: null })}
             onFinish={(finish: Finish) => patchSurface(selected.id, { finish })}
             onBrightness={(brightness) => patchSurface(selected.id, { brightness })}
+            onCleanup={(cleanup) => patchSurface(selected.id, { cleanup })}
             onFeather={(f) => refreshSurface(selected.id, f)}
             onClearMask={() => clearMask(selected.id)}
             onRefine={seg.phase === "ready" || seg.phase === "analyzing" ? () => refineSurface(selected.id) : undefined}

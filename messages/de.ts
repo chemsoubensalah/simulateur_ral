@@ -184,7 +184,16 @@ const de: Messages = {
     gloss: "Glänzend",
     brightness: "Lichtanpassung",
     brightnessHint: "Anpassen, wenn die neue Farbe für das Raumlicht zu hell oder zu dunkel wirkt.",
+    cleanup: "Flecken und Mängel ausblenden",
+    cleanupHint: "Neue Farbe deckt Flecken, Ausbesserungen und Schmutz ab. Licht und Schatten des Raums bleiben.",
     remove: "Farbe entfernen",
+  },
+  light: {
+    title: "Licht",
+    photo: "Wie im Foto",
+    day: "Tageslicht",
+    evening: "Abends (Lampen)",
+    hint: "Sehen Sie, wie die Farben zu verschiedenen Tageszeiten wirken.",
   },
   families: {
     white: "Weiß",

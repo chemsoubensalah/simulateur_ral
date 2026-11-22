@@ -9,6 +9,7 @@
 import { idbDelete, idbGet, idbPut } from "@/lib/segmentation/idbCache";
 import { packEnvelope, unpackEnvelope } from "@/lib/segmentation/f16";
 import type { Finish } from "@/lib/recolor/model";
+import type { LightMode } from "@/lib/recolor/lighting";
 
 const IMAGE_KEY = "session:image";
 const STATE_KEY = "session:state";
@@ -23,6 +24,8 @@ export type SavedSurface = {
   brightness: number;
   feather: number;
   visible: boolean;
+  /** Hide stains and defects (missing in sessions saved before it existed: on). */
+  cleanup?: boolean;
   mask: Uint8Array;
 };
 
@@ -31,6 +34,8 @@ export type SavedSession = {
   width: number;
   height: number;
   selectedId: string | null;
+  /** Lighting view (missing: as photographed). */
+  light?: LightMode;
   surfaces: SavedSurface[];
 };
 
@@ -92,6 +97,7 @@ export function serializeSession(s: SavedSession): Uint8Array {
     width: s.width,
     height: s.height,
     selectedId: s.selectedId,
+    light: s.light,
     surfaces: s.surfaces.map((x, i) => {
       const { mask: _mask, ...meta } = x;
       void _mask;
@@ -119,6 +125,7 @@ export function deserializeSession(buf: ArrayBuffer): SavedSession | null {
       width: header.width,
       height: header.height,
       selectedId: header.selectedId,
+      light: header.light,
       surfaces: header.surfaces.map(({ offset, length, ...meta }) => ({
         ...meta,
         mask: rleDecode(payload.subarray(offset, offset + length), n),

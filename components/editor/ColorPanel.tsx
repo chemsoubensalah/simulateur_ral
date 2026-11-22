@@ -14,6 +14,7 @@ type Props = PickerProps & {
   onRemoveColor: () => void;
   onFinish: (f: Finish) => void;
   onBrightness: (v: number) => void;
+  onCleanup: (on: boolean) => void;
   onFeather: (v: number) => void;
   onClearMask: () => void;
   /** Edge-aware refinement (needs the AI worker); undefined hides the button. */
@@ -22,7 +23,7 @@ type Props = PickerProps & {
 };
 
 export function ColorPanel(props: Props) {
-  const { surface, onRemoveColor, onFinish, onBrightness, onFeather, onClearMask, onRefine, refining, ...picker } = props;
+  const { surface, onRemoveColor, onFinish, onBrightness, onCleanup, onFeather, onClearMask, onRefine, refining, ...picker } = props;
   const { t, locale, formatNumber } = useI18n();
   const paint = surface.paintId ? getColor(surface.paintId) : undefined;
   const name = paint ? colorName(paint, locale) : undefined;
@@ -85,6 +86,22 @@ export function ColorPanel(props: Props) {
           ))}
         </div>
       </div>
+
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-3 text-sm">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={surface.cleanup}
+          onChange={(e) => onCleanup(e.target.checked)}
+          data-testid="cleanup"
+          aria-describedby="cleanup-hint"
+          className="mt-0.5 h-5 w-5 shrink-0 accent-brand-600"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">{t("color.cleanup")}</span>
+          <span id="cleanup-hint" className="text-xs text-muted">{t("color.cleanupHint")}</span>
+        </span>
+      </label>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="flex justify-between font-medium">
