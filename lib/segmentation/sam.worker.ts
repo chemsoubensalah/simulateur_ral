@@ -30,8 +30,9 @@ import {
 } from "./postprocess";
 import { defaultRefineOptions, edgeMap, growMask, refineMask } from "@/lib/mask/refine";
 import { SAM_MODEL_ID, type CandidatePreview, type Device, type Hypothesis, type WorkerRequest, type WorkerResponse } from "./protocol";
-import { CEILING_CLASSES, sceneClassAt, sceneKind, WALL_CLASSES, type SceneKind, type SceneMap } from "./scene";
-import { binaryToLogits, classBinary, majorityClass, maxLogits, meanLab, sceneOnGrid } from "./sceneOps";
+import { sceneClassAt, sceneKind, type SceneKind, type SceneMap } from "./scene";
+import { majorityClass, maxLogits, meanLab, sceneOnGrid } from "./sceneOps";
+import { buildAutoSurfaces, finishMask as finishAutoMask } from "./autoWalls";
 import { deltaE2000 } from "@/lib/color/deltaE";
 import type { Lab } from "@/lib/color/lab";
 
@@ -269,11 +270,8 @@ function joinSameSurface(base: Float32Array, kind: SceneKind): { logits: Float32
 
 function finishMask(logits: Float32Array, offset: number, seeds: { x: number; y: number }[]): Uint8Array {
   if (!emb || !image) throw new Error("Not ready");
-  const clean = cleanLogits(logits, offset, emb.geometry, seeds);
-  const coarse = upsampleLogits(clean, 0, emb.geometry, image.width, image.height);
-  // Close gaps at faint boundaries, then snap the edge to the photo.
-  const grown = growMask(coarse, image.rgba, image.width, image.height, image.edges);
-  return refineMask(grown, image.rgba, image.width, image.height, undefined, image.edges);
+  const clean = offset ? logits.subarray(offset, offset + MASK_SIZE) : logits;
+  return finishAutoMask(clean, seeds, emb.geometry, image);
 }
 
 async function decode(id: number, points: Point[], variant: number | null, merge = true) {
@@ -399,39 +397,26 @@ function startCandidates(gen: number) {
   runBatch(0);
 }
 
-/**
- * "Paint all walls": one mask for all walls and one for the ceiling, built from
- * the analysed surfaces of that kind plus scene cells no surface covered,
- * excluding objects (furniture, windows, doors…).
- */
-function autoSurfaces(): { kind: "wall" | "ceiling"; mask: Uint8Array }[] {
+/** "Paint all walls": one mask for all walls and one for the ceiling (see autoWalls.ts). */
+async function autoSurfaces(): Promise<{ kind: "wall" | "ceiling"; mask: Uint8Array }[]> {
   const info = ensureCandidateInfo();
   const sg = sceneGrid();
-  if (!info || !sg || !candidates || !emb) return [];
-  const out: { kind: "wall" | "ceiling"; mask: Uint8Array }[] = [];
-  for (const [kind, classes] of [["wall", WALL_CLASSES], ["ceiling", CEILING_CLASSES]] as const) {
-    const members = candidates.filter((c) => {
-      const ci = info.get(c.id)!;
-      return ci.kind === kind && ci.purity >= 0.55;
-    });
-    const objects = candidates.filter((c) => {
-      const ci = info.get(c.id)!;
-      return ci.kind !== kind && ci.purity >= 0.7;
-    });
-    const fromScene = classBinary(sg.grid, classes);
-    for (const o of objects) for (let i = 0; i < fromScene.length; i++) if (o.bin[i]) fromScene[i] = 0;
-    let area = 0;
-    for (const v of fromScene) area += v;
-    for (const m of members) area += binaryArea(m.bin);
-    if (area < 0.01 * fromScene.length) continue;
-    const logits = maxLogits([binaryToLogits(fromScene, sg.W, sg.H), ...members.map((m) => m.logits)]);
-    out.push({ kind, mask: finishMask(logits, 0, members.map((m) => m.seed)) });
-  }
-  return out;
+  if (!info || !sg || !candidates || !emb || !image || !scene) return [];
+  return buildAutoSurfaces({
+    candidates,
+    info,
+    scene,
+    grid: sg.grid,
+    gridW: sg.W,
+    gridH: sg.H,
+    geometry: emb.geometry,
+    image,
+    decode: (prompts) => runDecoder(prompts),
+  });
 }
 
-function sendAutoSurfaces(id: number) {
-  const list = autoSurfaces();
+async function sendAutoSurfaces(id: number) {
+  const list = await autoSurfaces();
   post({ type: "autoSurfaces", id, surfaces: list.map((x) => ({ kind: x.kind, mask: x.mask.buffer as ArrayBuffer })) }, list.map((x) => x.mask.buffer as ArrayBuffer));
 }
 
